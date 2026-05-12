@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "User": {
+      "title": "Utilisateur",
+      "description": "Profil utilisateur avec rôle RBAC",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "vendeur", "manager"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "email", "role", "createdAt"]
+    },
+    "Product": {
+      "title": "Produit",
+      "description": "Article de l'inventaire",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "purchasePrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "stockQuantity": { "type": "number" },
+        "sku": { "type": "string" },
+        "barcode": { "type": "string" },
+        "minStock": { "type": "number" }
+      },
+      "required": ["name", "categoryId", "purchasePrice", "sellingPrice", "stockQuantity"]
+    },
+    "Sale": {
+      "title": "Vente",
+      "description": "Transaction de vente POS",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "card", "transfer"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["completed", "refunded"] }
+      },
+      "required": ["userId", "items", "totalAmount", "paymentMethod", "createdAt", "status"]
+    },
+    "Customer": {
+      "title": "Client",
+      "description": "Fiche client et fidélité",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "clientCode": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "totalSpent": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "totalSpent"]
+    },
+    "Supplier": {
+      "title": "Fournisseur",
+      "description": "Fiche fournisseur",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "contactName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Expense": {
+      "title": "Dépense",
+      "description": "Charge opérationnelle",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "reason": { "type": "string" },
+        "amount": { "type": "number" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["category", "reason", "amount", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "Profils utilisateurs" },
+    "/products/{productId}": { "schema": "Product", "description": "Articles en stock" },
+    "/sales/{saleId}": { "schema": "Sale", "description": "Historique des ventes" },
+    "/categories/{categoryId}": { "schema": "object", "description": "Catégories de produits" },
+    "/customers/{customerId}": { "schema": "Customer", "description": "Base clients" },
+    "/suppliers/{supplierId}": { "schema": "Supplier", "description": "Base fournisseurs" },
+    "/stock_movements/{movementId}": { "schema": "object", "description": "Audit des stocks" },
+    "/expenses/{expenseId}": { "schema": "Expense", "description": "Dépenses" }
+  }
+}

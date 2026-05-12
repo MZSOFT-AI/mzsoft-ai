@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #1e293b;
+  --primary: #2563eb;
+  --secondary: #64748b;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+@layer components {
+  .dolisoft-card {
+    @apply bg-white border border-slate-200 shadow-sm rounded-none;
+  }
+  .dolisoft-table {
+    @apply w-full text-left text-sm border-collapse;
+  }
+  .dolisoft-table th {
+    @apply bg-slate-100 p-2 border border-slate-200 font-bold uppercase text-[11px] tracking-wider text-slate-600;
+  }
+  .dolisoft-table td {
+    @apply p-2 border border-slate-200 bg-white;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

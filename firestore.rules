@@ -1,0 +1,165 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ---------------------------------------------------------
+    // GLOBAL HELPERS
+    // ---------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { 
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        request.auth.token.email == 'djelloulmohamed1990@gmail.com'
+      ); 
+    }
+    function isValidId(id) { return id is string && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isVerifiedEmail() { return request.auth.token.email_verified == true; }
+
+    // ---------------------------------------------------------
+    // DEFAULT DENY
+    // ---------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // USERS
+    // ---------------------------------------------------------
+    function isValidUser(data) {
+      return data.keys().hasAll(['displayName', 'email', 'role', 'createdAt'])
+        && data.displayName is string && data.displayName.size() <= 100
+        && data.email is string && data.email.size() <= 100
+        && data.role in ['admin', 'vendeur', 'manager']
+        && data.createdAt == request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL']))
+        || isAdmin()
+      );
+    }
+
+    // ---------------------------------------------------------
+    // PRODUCTS
+    // ---------------------------------------------------------
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'categoryId', 'purchasePrice', 'sellingPrice', 'stockQuantity'])
+        && data.name is string && data.name.size() <= 128
+        && data.categoryId is string && isValidId(data.categoryId)
+        && data.purchasePrice is number && data.purchasePrice >= 0
+        && data.sellingPrice is number && data.sellingPrice >= 0
+        && data.stockQuantity is number
+        && (!data.keys().hasAny(['minStockLevel']) || data.minStockLevel is number)
+        && (!data.keys().hasAny(['sku']) || data.sku is string)
+        && (!data.keys().hasAny(['barcode']) || (data.barcode is string || data.barcode == null))
+        && (!data.keys().hasAny(['description']) || (data.description is string || data.description == null))
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && (!data.keys().hasAny(['createdAt']) || data.createdAt == request.time);
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidProduct(incoming());
+      allow update: if (isAdmin() || isSignedIn()) && isValidProduct(incoming()) && (
+        isAdmin() || 
+        (incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'updatedAt', 'minStockLevel', 'sku', 'name', 'categoryId', 'purchasePrice', 'sellingPrice', 'description']))
+      );
+    }
+
+    // ---------------------------------------------------------
+    // SALES
+    // ---------------------------------------------------------
+    function isValidSale(data) {
+      return data.keys().hasAll(['userId', 'userName', 'items', 'subtotal', 'discount', 'totalAmount', 'paymentMethod', 'createdAt', 'status'])
+        && data.userId == request.auth.uid
+        && data.userName is string
+        && data.items is list && data.items.size() > 0
+        && data.subtotal is number && data.subtotal >= 0
+        && data.discount is number && data.discount >= 0
+        && data.totalAmount is number && data.totalAmount >= 0
+        && data.paymentMethod in ['cash', 'card', 'transfer']
+        && data.status in ['completed', 'partially_returned', 'returned']
+        && (!data.keys().hasAny(['receivedAmount']) || data.receivedAmount is number)
+        && (!data.keys().hasAny(['change']) || data.change is number)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && (!data.keys().hasAny(['customerId']) || (data.customerId is string || data.customerId == null))
+        && (!data.keys().hasAny(['customerName']) || data.customerName is string);
+    }
+
+    match /sales/{saleId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidSale(incoming()) && incoming().status == 'completed' && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (incoming().status in ['partially_returned', 'returned'] && incoming().diff(existing()).affectedKeys().hasOnly(['items', 'status', 'updatedAt', 'totalAmount']))
+      );
+      allow delete: if false; // Archive only
+    }
+
+    // ---------------------------------------------------------
+    // STOCK MOVEMENTS (Auditable)
+    // ---------------------------------------------------------
+    function isValidMovement(data) {
+      return data.keys().hasAll(['productId', 'quantity', 'type', 'userId', 'createdAt'])
+        && data.userId == request.auth.uid
+        && data.quantity is number
+        && data.type in ['in', 'out', 'sale', 'adjustment', 'return', 'initial', 'adjustment_in', 'adjustment_out']
+        && data.createdAt == request.time
+        && (!data.keys().hasAny(['productName']) || data.productName is string)
+        && (!data.keys().hasAny(['previousStock']) || data.previousStock is number)
+        && (!data.keys().hasAny(['newStock']) || data.newStock is number)
+        && (!data.keys().hasAny(['reason']) || data.reason is string)
+        && (!data.keys().hasAny(['referenceId']) || data.referenceId is string);
+    }
+
+    match /stock_movements/{movementId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidMovement(incoming());
+      allow update, delete: if false; // Immuable
+    }
+
+    // ---------------------------------------------------------
+    // OTHER COLLECTIONS
+    // ---------------------------------------------------------
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['name', 'totalSpent'])
+        && data.name is string && data.name.size() <= 128
+        && data.totalSpent is number && data.totalSpent >= 0
+        && (!data.keys().hasAny(['clientCode']) || (data.clientCode is string || data.clientCode == null))
+        && (!data.keys().hasAny(['phone']) || (data.phone is string || data.phone == null))
+        && (!data.keys().hasAny(['email']) || (data.email is string || data.email == null))
+        && (!data.keys().hasAny(['address']) || (data.address is string || data.address == null))
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && (!data.keys().hasAny(['createdAt']) || data.createdAt == request.time);
+    }
+
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidCustomer(incoming());
+      allow update: if isSignedIn() && isValidCustomer(incoming()) && (
+        isAdmin() || 
+        (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'clientCode', 'phone', 'email', 'address', 'totalSpent', 'updatedAt']))
+      );
+      allow delete: if isAdmin();
+    }
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /expenses/{expenseId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
