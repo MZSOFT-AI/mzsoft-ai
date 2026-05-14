@@ -8,6 +8,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { SessionProvider } from './context/SessionContext';
 import Layout from './components/layout/Layout';
 
 // Lazy loading pages (for better performance)
@@ -22,7 +23,10 @@ const Customers = React.lazy(() => import('./pages/Customers'));
 const Suppliers = React.lazy(() => import('./pages/Suppliers'));
 const Expenses = React.lazy(() => import('./pages/Expenses'));
 const Reports = React.lazy(() => import('./pages/Reports'));
+const CashHistory = React.lazy(() => import('./pages/CashHistory'));
 const Settings = React.lazy(() => import('./pages/Settings'));
+const InventoryAudits = React.lazy(() => import('./pages/InventoryAudits'));
+const InventoryAuditDetails = React.lazy(() => import('./pages/InventoryAuditDetails'));
 
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -37,33 +41,38 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <NotificationProvider>
-          <Router>
-            <React.Suspense fallback={<LoadingFallback />}>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                
-                <Route path="/" element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }>
-                  <Route index element={<Dashboard />} />
-                  <Route path="pos" element={<POS />} />
-                  <Route path="inventory" element={<Inventory />} />
-                  <Route path="stock-movements" element={<StockMovements />} />
-                  <Route path="categories" element={<Categories />} />
-                  <Route path="sales-history" element={<SalesHistory />} />
-                  <Route path="customers" element={<Customers />} />
-                  <Route path="suppliers" element={<Suppliers />} />
-                  <Route path="expenses" element={<Expenses />} />
-                  <Route path="reports" element={<Reports />} />
-                  <Route path="settings" element={<Settings />} />
-                </Route>
-
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </React.Suspense>
-          </Router>
+          <SessionProvider>
+            <Router>
+              <React.Suspense fallback={<LoadingFallback />}>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  
+                  <Route path="/" element={
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
+                  }>
+                    <Route index element={<Dashboard />} />
+                    <Route path="pos" element={<POS />} />
+                    <Route path="inventory" element={<Inventory />} />
+                    <Route path="inventory/audits" element={<InventoryAudits />} />
+                    <Route path="inventory/audits/:id" element={<InventoryAuditDetails />} />
+                    <Route path="stock-movements" element={<StockMovements />} />
+                    <Route path="categories" element={<Categories />} />
+                    <Route path="sales-history" element={<SalesHistory />} />
+                    <Route path="customers" element={<Customers />} />
+                    <Route path="suppliers" element={<Suppliers />} />
+                    <Route path="expenses" element={<Expenses />} />
+                    <Route path="cash-history" element={<CashHistory />} />
+                    <Route path="reports" element={<Reports />} />
+                    <Route path="settings" element={<Settings />} />
+                  </Route>
+  
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </React.Suspense>
+            </Router>
+          </SessionProvider>
         </NotificationProvider>
       </AuthProvider>
     </ThemeProvider>

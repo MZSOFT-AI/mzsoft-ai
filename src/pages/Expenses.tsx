@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { dbService } from '../firebase/db';
 import { useAuth } from '../context/AuthContext';
+import { useSession } from '../context/SessionContext';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Button } from '../components/ui/Button';
 import { Plus, Search, Trash2, ShieldAlert } from 'lucide-react';
@@ -11,12 +12,31 @@ import { useForm } from 'react-hook-form';
 import { formatCurrency } from '../lib/utils';
 import { format } from 'date-fns';
 
+import { useNotification } from '../context/NotificationContext';
+
 export default function Expenses() {
-  const { user } = useAuth();
+  const { showToast } = useNotification();
+  const { user, hasPermission } = useAuth();
+  const { activeSession } = useSession();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm();
+
+  const canManage = hasPermission('canManageExpenses');
+
+  if (!canManage) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="bg-white p-12 text-center border border-slate-200">
+           <ShieldAlert size={48} className="text-rose-500 mx-auto mb-4" />
+           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Refusé</h2>
+           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation de gérer ou visualiser les dépenses.</p>
+           <Button onClick={() => window.history.back()} className="mt-6 bg-slate-800">Retour</Button>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     return onSnapshot(
@@ -33,13 +53,16 @@ export default function Expenses() {
       await dbService.addDocument('expenses', {
         ...data,
         amount: Number(data.amount),
-        userId: user?.uid,
-        userName: user?.displayName || 'Admin',
+        userId: activeSession?.userId || user?.uid,
+        userName: activeSession?.userName || user?.displayName || 'Admin',
+        actorId: user?.uid,
+        createdAt: serverTimestamp(),
       });
+      showToast('Dépense enregistrée', 'success');
       setIsModalOpen(false);
       reset();
     } catch (error) {
-      // Handled
+      showToast('Erreur lors de l\'enregistrement', 'error');
     }
   };
 
@@ -47,8 +70,9 @@ export default function Expenses() {
     if (window.confirm('Supprimer cette dépense ?')) {
       try {
         await dbService.deleteDocument('expenses', id);
+        showToast('Dépense supprimée', 'success');
       } catch (error) {
-        // Handled
+        showToast('Erreur lors de la suppression', 'error');
       }
     }
   };

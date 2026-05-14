@@ -2,10 +2,11 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../firebase/db';
-import { collection, runTransaction, doc, serverTimestamp, orderBy, increment } from 'firebase/firestore';
+import { collection, runTransaction, doc, serverTimestamp, orderBy, increment, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { useCollection } from '../hooks/useCollection';
+import { useSession } from '../context/SessionContext';
 import { Product, Category, SaleItem, Customer } from '../types';
 import { cn, formatCurrency, cleanObject } from '../lib/utils';
 import { useNotification } from '../context/NotificationContext';
@@ -30,16 +31,35 @@ import {
   ChevronRight,
   Printer,
   Calendar,
-  Layers
+  Layers,
+  AlertCircle,
+  ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { pdfService } from '../services/pdfService';
 import { format } from 'date-fns';
+import StartSessionModal from '../components/StartSessionModal';
 
 const POS: React.FC = () => {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const { activeSession, loading: sessionLoading } = useSession();
   const { showToast } = useNotification();
   const navigate = useNavigate();
+
+  const canSell = hasPermission('canSell');
+
+  if (!canSell) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="bg-white p-12 text-center border border-slate-200">
+           <AlertCircle size={48} className="text-rose-500 mx-auto mb-4" />
+           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Refusé</h2>
+           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation d'accéder au terminal de vente.</p>
+           <Button onClick={() => navigate('/')} className="mt-6 bg-slate-800">Retour au Tableau de Bord</Button>
+        </div>
+      </div>
+    );
+  }
   
   const { data: products, loading: productsLoading } = useCollection<Product>('products', [orderBy('name')]);
   const { data: categories } = useCollection<Category>('categories', [orderBy('name')]);
@@ -51,6 +71,7 @@ const POS: React.FC = () => {
   const [receivedAmount, setReceivedAmount] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customCustomerName, setCustomCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
@@ -60,37 +81,41 @@ const POS: React.FC = () => {
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [lastSale, setLastSale] = useState<any>(null);
   
-  const { data: pendingSales } = useCollection<any>('pending_sales', [orderBy('createdAt', 'desc')]);
+  const { data: pendingSales } = useCollection<any>('pending_sales', user ? [
+    where('userId', '==', activeSession?.userId || user.uid),
+    orderBy('createdAt', 'desc')
+  ] : []);
+
+  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.total, 0), [cart]);
+  const tax = useMemo(() => subtotal * 0, [subtotal]); // Custom tax if needed
+  const total = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount]);
+  const change = useMemo(() => {
+    const received = Number(receivedAmount) || 0;
+    return received > 0 ? (received - total) : 0;
+  }, [receivedAmount, total]);
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
+  
+  // Refs for auto-save on unmount
+  const cartRef = useRef<SaleItem[]>([]);
+  const customerRef = useRef<Customer | null>(null);
+  const customNameRef = useRef<string>('');
+  const discountRef = useRef<number>(0);
+  const subtotalRef = useRef<number>(0);
+  const totalRef = useRef<number>(0);
 
-  // Keyboard accessibility
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F9') { // Shortcut for sale
-        handleSale();
-      }
-      if (e.key === 'F2') { // Shortcut for clear
-        setCart([]);
-      }
-      if (e.key === 'F4') { // Shortcut for Pending
-        handleSuspendSale();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, isProcessing, selectedCustomer, discount]);
-
+  // Redirection logic removed, now we show StartSessionModal
+  
   const handleSuspendSale = async () => {
     if (cart.length === 0 || isSuspending || !user) return;
     
     setIsSuspending(true);
     try {
       await dbService.addDocument('pending_sales', {
-        userId: user.uid,
-        userName: user.displayName || 'Vendeur',
+        userId: activeSession?.userId || user.uid,
+        userName: activeSession?.userName || user.displayName || 'Vendeur',
         customerId: selectedCustomer?.id || null,
-        customerName: selectedCustomer?.name || 'Client de passage',
+        customerName: selectedCustomer?.name || customCustomerName || 'Client de passage',
         items: cart,
         discount,
         subtotal,
@@ -110,7 +135,7 @@ const POS: React.FC = () => {
     }
   };
 
-  const recallPendingSale = (pending: any) => {
+  const recallPendingSale = async (pending: any) => {
     if (cart.length > 0 && !window.confirm("Le panier actuel sera remplacé par la vente en instance. Continuer ?")) {
       return;
     }
@@ -120,12 +145,14 @@ const POS: React.FC = () => {
     if (pending.customerId) {
       const cust = customers.find(c => c.id === pending.customerId);
       setSelectedCustomer(cust || { id: pending.customerId, name: pending.customerName } as Customer);
+      setCustomCustomerName('');
     } else {
       setSelectedCustomer(null);
+      setCustomCustomerName(pending.customerName === 'Client de passage' ? '' : pending.customerName);
     }
     
     // Delete from pending after recall
-    dbService.deleteDocument('pending_sales', pending.id);
+    await dbService.deleteDocument('pending_sales', pending.id);
     setShowPendingModal(false);
     showToast("Vente récupérée", "success");
   };
@@ -150,13 +177,15 @@ const POS: React.FC = () => {
       return;
     }
 
+    const existingItem = cart.find(item => item.id === product.id);
+    if (existingItem && existingItem.quantity >= stock) {
+      showToast(`Stock limité à ${stock} pour ${product.name}`, 'warning');
+      return;
+    }
+
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        if (existing.quantity >= stock) {
-          showToast(`Stock limité à ${stock} pour ${product.name}`, 'warning');
-          return prev;
-        }
         return prev.map(item => 
           item.id === product.id 
             ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.price } 
@@ -168,6 +197,7 @@ const POS: React.FC = () => {
         name: product.name, 
         price: product.sellingPrice, 
         quantity: 1, 
+        unit: product.unit || 'u',
         total: product.sellingPrice
       }];
     });
@@ -178,14 +208,16 @@ const POS: React.FC = () => {
     if (!product) return;
     const stock = Number(product.stockQuantity) || 0;
 
+    const item = cart.find(i => i.id === id);
+    if (item && delta > 0 && item.quantity + delta > stock) {
+      showToast(`Stock limité pour ${item.name}`, 'warning');
+      return;
+    }
+
     setCart(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = item.quantity + delta;
         if (newQty <= 0) return item;
-        if (newQty > stock) {
-          showToast(`Stock limité pour ${item.name}`, 'warning');
-          return item;
-        }
         return { ...item, quantity: newQty, total: newQty * item.price };
       }
       return item;
@@ -196,13 +228,17 @@ const POS: React.FC = () => {
     setCart(prev => prev.filter(item => item.id !== id));
   };
 
-  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.total, 0), [cart]);
-  const tax = useMemo(() => subtotal * 0, [subtotal]); // Custom tax if needed
-  const total = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount]);
-  const change = useMemo(() => {
-    const received = Number(receivedAmount) || 0;
-    return received > 0 ? (received - total) : 0;
-  }, [receivedAmount, total]);
+  const [isDeletingPending, setIsDeletingPending] = useState<string | null>(null);
+
+  const toggleUnit = (id: string) => {
+    setCart(prev => prev.map(item => {
+      if (item.id === id) {
+        const nextUnit = item.unit === 'u' ? 'ml' : item.unit === 'ml' ? 'u' : item.unit;
+        return { ...item, unit: nextUnit };
+      }
+      return item;
+    }));
+  };
 
   const handleSale = async () => {
     if (cart.length === 0 || isProcessing || !user) return;
@@ -228,11 +264,13 @@ const POS: React.FC = () => {
         }
 
         const saleRef = doc(collection(db, 'sales'), saleId);
+        const finalCustomerName = selectedCustomer ? selectedCustomer.name : (customCustomerName || 'Client de passage');
+        
         const saleData = {
-          userId: user.uid,
-          userName: user.displayName || user.email?.split('@')[0] || 'Vendeur',
+          userId: activeSession?.userId || user.uid,
+          userName: activeSession?.userName || user.displayName || user.email?.split('@')[0] || 'Vendeur',
           customerId: selectedCustomer?.id || null,
-          customerName: selectedCustomer?.name || 'Client de passage',
+          customerName: finalCustomerName,
           items: cart.map(item => ({
             productId: item.id,
             name: item.name,
@@ -276,6 +314,7 @@ const POS: React.FC = () => {
             productName: item.name,
             type: 'sale',
             quantity: item.quantity,
+            unit: item.unit || 'u',
             previousStock: currentStock,
             newStock: currentStock - item.quantity,
             reason: `Vente ${saleId}`,
@@ -292,7 +331,7 @@ const POS: React.FC = () => {
         date: new Date(),
         items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.price })),
         customerId: selectedCustomer?.id,
-        customerName: selectedCustomer?.name || 'Client de passage',
+        customerName: selectedCustomer ? selectedCustomer.name : (customCustomerName || 'Client de passage'),
         totalAmount: total,
         receivedAmount: Number(receivedAmount) || total,
         change: change > 0 ? change : 0,
@@ -307,6 +346,7 @@ const POS: React.FC = () => {
       setDiscount(0);
       setReceivedAmount('');
       setSelectedCustomer(null);
+      setCustomCustomerName('');
       setShowSuccess(true);
       showToast("Vente réussie", "success");
     } catch (error: any) {
@@ -324,13 +364,83 @@ const POS: React.FC = () => {
     }
   };
 
+  // Keep refs in sync with state
+  useEffect(() => {
+    cartRef.current = cart;
+    customerRef.current = selectedCustomer;
+    customNameRef.current = customCustomerName;
+    discountRef.current = discount;
+    subtotalRef.current = subtotal;
+    totalRef.current = total;
+  }, [cart, selectedCustomer, customCustomerName, discount, subtotal, total]);
+
+  // Keyboard accessibility
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F9') { // Shortcut for sale
+        handleSale();
+      }
+      if (e.key === 'F2') { // Shortcut for clear
+        setCart([]);
+      }
+      if (e.key === 'F4') { // Shortcut for Pending
+        handleSuspendSale();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cart, isProcessing, selectedCustomer, customCustomerName, discount, subtotal, total, handleSale, handleSuspendSale]); // Added dependencies for safety
+
+  // Auto-save on unmount
+  useEffect(() => {
+    return () => {
+      // If there are items in the cart and we're navigating away (unmounting)
+      // we save it automatically to avoid data loss
+      if (cartRef.current.length > 0 && user?.uid) {
+        // Create a copy of values at unmount time
+        const cartToSave = [...cartRef.current];
+        const customerToSave = customerRef.current;
+        const discountToSave = discountRef.current;
+        const subtotalToSave = subtotalRef.current;
+        const totalToSave = totalRef.current;
+        const userId = user.uid;
+        const userName = user.displayName || 'Vendeur';
+
+        // Direct call to Firestore without waiting (fire and forget)
+        dbService.addDocument('pending_sales', {
+          userId,
+          userName,
+          customerId: customerToSave?.id || null,
+          customerName: customerToSave?.name || customNameRef.current || 'Client de passage',
+          items: cartToSave,
+          discount: discountToSave,
+          subtotal: subtotalToSave,
+          totalAmount: totalToSave,
+          createdAt: new Date(), // Using new Date() for reliability in cleanup
+          isAutoSave: true
+        }).catch(err => console.error("POS Auto-save failed:", err));
+      }
+    };
+  }, [user?.uid]);
+
   return (
     <div className="flex h-[calc(100vh-64px)] bg-slate-100 overflow-hidden font-sans">
+      <StartSessionModal isOpen={!sessionLoading && !activeSession} />
       {/* Categories Sidebar */}
       <div className="w-64 bg-slate-200 border-r border-slate-300 flex flex-col hidden lg:flex">
-        <div className="p-4 bg-slate-800 text-white flex items-center gap-2">
-          <Layers size={18} />
-          <span className="font-bold uppercase text-xs tracking-widest">Catégories</span>
+        <div className="p-4 bg-slate-800 text-white flex items-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => navigate('/dashboard')}
+            className="h-8 w-8 p-0 rounded-full hover:bg-slate-700 text-white"
+          >
+            <ArrowLeft size={16} />
+          </Button>
+          <div className="flex items-center gap-2">
+            <Layers size={18} />
+            <span className="font-bold uppercase text-xs tracking-widest">Catégories</span>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           <button
@@ -438,7 +548,7 @@ const POS: React.FC = () => {
                       "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
                       p.stockQuantity <= 5 ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"
                     )}>
-                      {p.stockQuantity} {p.stockQuantity <= 1 ? 'unité' : 'unités'}
+                      {p.stockQuantity} {p.unit || 'u'}
                     </span>
                   </td>
                   <td className="text-center">
@@ -483,11 +593,63 @@ const POS: React.FC = () => {
                   <tr key={item.id}>
                     <td className="font-bold text-slate-700">{item.name}</td>
                     <td className="text-right font-mono text-slate-500">{formatCurrency(item.price)}</td>
-                    <td className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:bg-slate-200 rounded border border-slate-300"><Minus size={12}/></button>
-                        <span className="w-10 font-bold text-center">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.id, 1)} className="p-1 hover:bg-slate-200 rounded border border-slate-300"><Plus size={12}/></button>
+                    <td className="text-center px-1">
+                      <div className="flex items-center justify-center gap-1 group/qty">
+                        <button 
+                          onClick={() => updateQuantity(item.id, -1)} 
+                          className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95"
+                          title="Retirer 1"
+                        >
+                          <Minus size={14}/>
+                        </button>
+                        
+                        <input 
+                          type="number"
+                          step={item.unit === 'm' || item.unit === 'kg' || item.unit === 'ml' ? "0.01" : "1"}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const isFractional = item.unit === 'm' || item.unit === 'kg' || item.unit === 'l' || item.unit === 'ml';
+                            const val = isFractional ? parseFloat(e.target.value) : parseInt(e.target.value);
+                            
+                            if (!isNaN(val)) {
+                              const product = products.find(p => p.id === item.id);
+                              const stock = product ? Number(product.stockQuantity) : 0;
+                              const targetVal = Math.max(0, Math.min(val, stock)); // Allow 0 while typing
+                              
+                              setCart(prev => prev.map(i => 
+                                i.id === item.id 
+                                  ? { ...i, quantity: targetVal, total: Number((targetVal * i.price).toFixed(2)) } 
+                                  : i
+                              ));
+
+                              if (val > stock) {
+                                showToast(`Stock maximum: ${stock}`, 'warning');
+                              }
+                            } else if (e.target.value === '') {
+                               setCart(prev => prev.map(i => 
+                                i.id === item.id 
+                                  ? { ...i, quantity: 0, total: 0 } 
+                                  : i
+                              ));
+                            }
+                          }}
+                          className="w-16 h-7 text-center font-black text-sm bg-blue-50 border border-blue-200 rounded-md outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <button
+                          onClick={() => toggleUnit(item.id)}
+                          className="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded border border-blue-100 transition-colors"
+                          title="Changer l'unité (u/ml)"
+                        >
+                          {item.unit || 'u'}
+                        </button>
+                        
+                        <button 
+                          onClick={() => updateQuantity(item.id, 1)} 
+                          className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95"
+                          title="Ajouter 1"
+                        >
+                          <Plus size={14}/>
+                        </button>
                       </div>
                     </td>
                     <td className="text-right font-bold text-slate-900">{formatCurrency(item.total)}</td>
@@ -515,17 +677,44 @@ const POS: React.FC = () => {
         <div className="p-4 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Client</span>
-            <button onClick={() => setShowCustomerModal(true)} className="text-[10px] font-bold text-blue-600 hover:underline">Modifier</button>
-          </div>
-          <div className="flex items-center gap-3 p-2 border border-slate-300 bg-white">
-            <div className="w-8 h-8 rounded bg-slate-200 flex items-center justify-center text-slate-500">
-              <User size={16} />
-            </div>
-            <div className="flex-1 min-w-0">
-               <div className="text-xs font-bold text-slate-900 truncate">{selectedCustomer?.name || 'Client de passage'}</div>
-               <div className="text-[10px] text-slate-500">{selectedCustomer?.phone || '-'}</div>
+            <div className="flex gap-2">
+               {selectedCustomer && (
+                 <button onClick={() => { setSelectedCustomer(null); setCustomCustomerName(''); }} className="text-[10px] font-bold text-rose-600 hover:underline">Détacher</button>
+               )}
+               <button onClick={() => setShowCustomerModal(true)} className="text-[10px] font-bold text-blue-600 hover:underline">
+                 {selectedCustomer ? 'Changer' : 'Sélectionner'}
+               </button>
             </div>
           </div>
+          
+          {selectedCustomer ? (
+            <div className="flex items-center gap-3 p-2 border border-blue-200 bg-blue-50">
+              <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white">
+                <User size={16} />
+              </div>
+              <div className="flex-1 min-w-0">
+                 <div className="text-xs font-bold text-slate-900 truncate">
+                   {selectedCustomer.name}
+                   {selectedCustomer.company && <span className="ml-1 text-[9px] text-blue-600 italic lowercase tracking-tight">({selectedCustomer.company})</span>}
+                 </div>
+                 <div className="text-[10px] text-slate-500">
+                   {selectedCustomer.phone || 'Sans téléphone'} 
+                   {selectedCustomer.clientCode && <span className="ml-2 font-mono text-blue-500 bg-blue-50 px-1 rounded-sm text-[9px]">ID: {selectedCustomer.clientCode}</span>}
+                 </div>
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input 
+                type="text"
+                placeholder="Nom du client (Occasionnel)..."
+                value={customCustomerName}
+                onChange={(e) => setCustomCustomerName(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 bg-white text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          )}
         </div>
 
         {/* Totals Section */}
@@ -629,35 +818,81 @@ const POS: React.FC = () => {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
+              autoFocus
               type="text" 
-              placeholder="Chercher client..." 
+              placeholder="Chercher par Nom, Société ou Carte Fidélité..." 
               value={customerSearchQuery}
-              onChange={(e) => setCustomerSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                const query = e.target.value;
+                setCustomerSearchQuery(query);
+                
+                // Si on scanne un code barre exact et qu'un seul client correspond
+                if (query.length >= 4) {
+                  const exactMatch = customers.find(c => 
+                    c.clientCode?.toLowerCase() === query.toLowerCase()
+                  );
+                  if (exactMatch) {
+                    setSelectedCustomer(exactMatch);
+                    setShowCustomerModal(false);
+                    setCustomerSearchQuery('');
+                  }
+                }
+              }}
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-bold"
             />
           </div>
-          <div className="max-h-96 overflow-y-auto space-y-1">
-            {customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase())).map(c => (
+          <div className="max-h-96 overflow-y-auto space-y-2 p-1">
+            {customers.filter(c => 
+              c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) || 
+              (c.company && c.company.toLowerCase().includes(customerSearchQuery.toLowerCase())) ||
+              (c.clientCode && c.clientCode.toLowerCase().includes(customerSearchQuery.toLowerCase())) ||
+              (c.phone && c.phone.includes(customerSearchQuery))
+            ).map(c => (
               <button
                 key={c.id}
                 onClick={() => {
                   setSelectedCustomer(c);
                   setShowCustomerModal(false);
+                  setCustomerSearchQuery('');
                 }}
-                className="w-full flex items-center justify-between p-3 border border-slate-200 hover:bg-blue-50 text-left transition-colors"
+                className={cn(
+                  "w-full flex items-center justify-between p-4 border transition-all text-left rounded-xl shadow-sm",
+                  selectedCustomer?.id === c.id ? "border-blue-500 bg-blue-50" : "border-slate-100 bg-white hover:border-blue-300 hover:bg-slate-50"
+                )}
               >
-                <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 rounded bg-slate-200 flex items-center justify-center text-slate-500"><User size={16}/></div>
+                <div className="flex items-center gap-4">
+                   <div className={cn(
+                     "w-10 h-10 rounded-lg flex items-center justify-center font-black text-xs",
+                     selectedCustomer?.id === c.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400"
+                   )}>
+                     {c.name[0]}
+                   </div>
                    <div>
-                     <div className="text-sm font-bold">{c.name}</div>
-                     <div className="text-[10px] text-slate-500">{c.phone || 'Sans téléphone'}</div>
+                     <div className="text-sm font-black text-slate-800 flex items-center gap-2">
+                        {c.name}
+                        {c.company && <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded uppercase tracking-wider">{c.company}</span>}
+                     </div>
+                     <div className="flex items-center gap-3 mt-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{c.phone || 'Sans téléphone'}</span>
+                        {c.clientCode && (
+                          <span className="text-[10px] font-mono font-bold text-blue-500 bg-blue-50 px-1.5 rounded flex items-center gap-1">
+                             <CreditCard size={10} /> {c.clientCode}
+                          </span>
+                        )}
+                     </div>
                    </div>
                 </div>
-                <ChevronRight size={16} className="text-slate-300" />
+                <div className="text-right">
+                   <div className="text-[10px] font-black text-slate-300 uppercase">Total achats</div>
+                   <div className="text-xs font-black text-slate-600">{formatCurrency(c.totalSpent || 0)}</div>
+                </div>
               </button>
             ))}
           </div>
-          <Button variant="ghost" onClick={() => setShowCustomerModal(false)} className="w-full">Annuler</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/customers')} className="flex-1 uppercase font-black text-[10px] tracking-widest h-11">Nouveau/Gérer clients</Button>
+            <Button variant="ghost" onClick={() => setShowCustomerModal(false)} className="flex-1 uppercase font-black text-[10px] tracking-widest h-11">Fermer</Button>
+          </div>
         </div>
       </Modal>
 
@@ -682,6 +917,9 @@ const POS: React.FC = () => {
                          </td>
                          <td className="text-xs font-bold text-slate-800">
                             {pending.customerName}
+                            {pending.isAutoSave && (
+                              <span className="ml-2 px-1 bg-slate-100 text-[9px] text-slate-400 rounded border border-slate-200">AUTO</span>
+                            )}
                          </td>
                          <td className="text-right font-black text-slate-900 text-xs">
                             {formatCurrency(pending.totalAmount)}
@@ -695,15 +933,27 @@ const POS: React.FC = () => {
                                <RefreshCw size={14} />
                             </button>
                             <button 
-                              onClick={() => {
+                              onClick={async () => {
                                 if(window.confirm("Supprimer cette mise en instance ?")) {
-                                  dbService.deleteDocument('pending_sales', pending.id);
+                                  try {
+                                    setIsDeletingPending(pending.id);
+                                    await dbService.deleteDocument('pending_sales', pending.id);
+                                    showToast("Mise en instance supprimée", "success");
+                                  } catch (error) {
+                                    showToast("Erreur lors de la suppression", "error");
+                                  } finally {
+                                    setIsDeletingPending(null);
+                                  }
                                 }
                               }}
-                              className="ml-1 p-1 text-slate-300 hover:text-rose-600 transition-colors"
+                              disabled={isDeletingPending === pending.id}
+                              className={cn(
+                                "ml-1 p-1 transition-colors",
+                                isDeletingPending === pending.id ? "text-slate-200 cursor-not-allowed" : "text-slate-300 hover:text-rose-600"
+                              )}
                               title="Supprimer"
                             >
-                               <Trash2 size={14} />
+                               {isDeletingPending === pending.id ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                             </button>
                          </td>
                       </tr>

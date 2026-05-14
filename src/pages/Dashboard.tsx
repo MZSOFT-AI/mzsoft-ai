@@ -21,11 +21,14 @@ import { motion } from 'motion/react';
 import { 
   AreaChart, 
   Area, 
+  BarChart,
+  Bar,
   XAxis, 
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer
+  ResponsiveContainer,
+  Cell
 } from 'recharts';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -33,9 +36,14 @@ import { Button } from '../components/ui/Button';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const { data: sales } = useCollection<Sale>('sales', [orderBy('createdAt', 'desc'), limit(500)]);
   const { data: products } = useCollection<Product>('products');
   const { data: customers } = useCollection('customers');
+
+  const canViewFinancials = hasPermission('canViewReports');
+  const canManageStock = hasPermission('canManageStock');
+  const canSell = hasPermission('canSell');
 
   const statsData = useMemo(() => {
     const totalRevenue = sales.reduce((acc, sale) => acc + (sale.totalAmount || 0), 0);
@@ -92,6 +100,31 @@ const Dashboard: React.FC = () => {
     return last7Days.map(day => ({ name: day, sales: dailyData[day] }));
   }, [sales]);
 
+  const monthlyChartData = useMemo(() => {
+    const monthlyData: Record<string, number> = {};
+    const today = new Date();
+    
+    // Generate last 12 months labels
+    const last12Months = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      return format(d, 'MMM yy', { locale: fr });
+    }).reverse();
+
+    last12Months.forEach(month => monthlyData[month] = 0);
+
+    sales.forEach(sale => {
+      if (sale.createdAt) {
+        const date = (sale.createdAt as any).toDate ? (sale.createdAt as any).toDate() : new Date(sale.createdAt as any);
+        const monthLabel = format(date, 'MMM yy', { locale: fr });
+        if (monthlyData[monthLabel] !== undefined) {
+          monthlyData[monthLabel] += (sale.totalAmount || 0);
+        }
+      }
+    });
+
+    return last12Months.map(month => ({ name: month, amount: monthlyData[month] }));
+  }, [sales]);
+
   return (
     <div className="space-y-6">
       {/* ERP Header */}
@@ -116,11 +149,11 @@ const Dashboard: React.FC = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: 'Chiffre d\'Affaires', value: formatCurrency(statsData.monthlyRevenue), icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { title: 'Commandes Total', value: statsData.totalSales, icon: ShoppingCart, color: 'text-purple-600', bg: 'bg-purple-50' },
-          { title: 'Base Clients', value: statsData.totalCustomers, icon: Users, color: 'text-teal-600', bg: 'bg-teal-50' },
-          { title: 'Alertes Stock', value: statsData.lowStock, icon: Package, color: 'text-red-600', bg: 'bg-red-50' },
-        ].map((stat, idx) => (
+          { title: 'Chiffre d\'Affaires', value: formatCurrency(statsData.monthlyRevenue), icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50', show: canViewFinancials },
+          { title: 'Commandes Total', value: statsData.totalSales, icon: ShoppingCart, color: 'text-purple-600', bg: 'bg-purple-50', show: canViewFinancials },
+          { title: 'Base Clients', value: statsData.totalCustomers, icon: Users, color: 'text-teal-600', bg: 'bg-teal-50', show: true },
+          { title: 'Alertes Stock', value: statsData.lowStock, icon: Package, color: 'text-red-600', bg: 'bg-red-50', show: canManageStock },
+        ].filter(s => s.show).map((stat, idx) => (
           <div key={idx} className="bg-white border border-slate-200 p-5 flex items-center gap-4 group hover:border-blue-300 transition-colors">
             <div className={cn("w-12 h-12 rounded flex items-center justify-center shrink-0", stat.bg, stat.color)}>
               <stat.icon size={24} />
@@ -134,35 +167,81 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Monthly Sales Bar Chart */}
+        {canViewFinancials && (
+          <div className="lg:col-span-3 bg-white border border-slate-200 shadow-sm flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar size={16} className="text-emerald-500" />
+                <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">Ventes Mensuelles (12 Mois)</span>
+              </div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Total 12m: <span className="text-slate-900">{formatCurrency(monthlyChartData.reduce((acc, d) => acc + d.amount, 0))}</span>
+              </div>
+            </div>
+            <div className="p-6 h-[400px] w-full relative min-h-[400px]">
+               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis 
+                      dataKey="name" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 'bold' }} 
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: '#94a3b8' }}
+                      tickFormatter={(value) => `${value > 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                    />
+                    <Tooltip 
+                      cursor={{ fill: '#f8fafc' }}
+                      contentStyle={{ borderRadius: '0', border: '1px solid #e2e8f0', boxShadow: 'none', fontSize: '12px', fontWeight: 'bold' }}
+                      formatter={(value: number) => [formatCurrency(value), 'Ventes']}
+                    />
+                    <Bar dataKey="amount" radius={[4, 4, 0, 0]} barSize={40}>
+                      {monthlyChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index === monthlyChartData.length - 1 ? '#059669' : '#10b981'} fillOpacity={0.8} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+               </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
         {/* Sales Chart */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm flex flex-col">
-          <div className="p-4 border-b border-slate-100 flex items-center gap-2">
-            <TrendingUp size={16} className="text-blue-500" />
-            <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">Courbe des Ventes (7 Jours)</span>
+        {canViewFinancials && (
+          <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+              <TrendingUp size={16} className="text-blue-500" />
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">Courbe des Ventes (7 Jours)</span>
+            </div>
+            <div className="p-6 h-[400px] w-full relative min-h-[400px]">
+               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '0', border: '1px solid #e2e8f0', boxShadow: 'none', fontSize: '12px' }}
+                    />
+                    <Area type="monotone" dataKey="sales" stroke="#2563eb" strokeWidth={3} fill="url(#chartGradient)" />
+                  </AreaChart>
+               </ResponsiveContainer>
+            </div>
           </div>
-          <div className="p-6 h-[400px]">
-             <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '0', border: '1px solid #e2e8f0', boxShadow: 'none', fontSize: '12px' }}
-                  />
-                  <Area type="monotone" dataKey="sales" stroke="#2563eb" strokeWidth={3} fill="url(#chartGradient)" />
-                </AreaChart>
-             </ResponsiveContainer>
-          </div>
-        </div>
+        )}
 
         {/* Recent Items */}
-        <div className="bg-white border border-slate-200 shadow-sm flex flex-col">
+        <div className={cn("bg-white border border-slate-200 shadow-sm flex flex-col", !canViewFinancials && "lg:col-span-3")}>
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <RefreshCw size={16} className="text-blue-500" />

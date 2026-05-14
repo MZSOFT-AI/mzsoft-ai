@@ -8,7 +8,10 @@ import { Plus, Search, Phone, Mail, User, Edit2, Trash2, Truck, UserCheck } from
 import { useForm } from 'react-hook-form';
 import Modal from '../components/ui/Modal';
 
+import { useNotification } from '../context/NotificationContext';
+
 export default function Suppliers() {
+  const { showToast } = useNotification();
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
@@ -21,7 +24,9 @@ export default function Suppliers() {
       (snapshot) => {
         setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
-      (error) => handleFirestoreError(error, OperationType.LIST, 'suppliers')
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'suppliers');
+      }
     );
   }, []);
 
@@ -29,14 +34,16 @@ export default function Suppliers() {
     try {
       if (editingSupplier) {
         await dbService.updateDocument('suppliers', editingSupplier.id, data);
+        showToast('Fournisseur mis à jour', 'success');
       } else {
         await dbService.addDocument('suppliers', data);
+        showToast('Fournisseur ajouté', 'success');
       }
       setIsModalOpen(false);
       setEditingSupplier(null);
       reset();
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'suppliers');
+      showToast('Erreur lors de l\'enregistrement', 'error');
     }
   };
 
@@ -50,8 +57,9 @@ export default function Suppliers() {
     if (window.confirm('Voulez-vous vraiment supprimer ce fournisseur ?')) {
       try {
         await dbService.deleteDocument('suppliers', id);
+        showToast('Fournisseur supprimé', 'success');
       } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `suppliers/${id}`);
+        showToast('Erreur lors de la suppression', 'error');
       }
     }
   };

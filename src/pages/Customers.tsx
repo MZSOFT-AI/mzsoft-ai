@@ -11,7 +11,10 @@ import { format } from 'date-fns';
 import { Customer } from '../types';
 import { formatCurrency } from '../lib/utils';
 
+import { useNotification } from '../context/NotificationContext';
+
 export default function Customers() {
+  const { showToast } = useNotification();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,7 +27,9 @@ export default function Customers() {
       (snapshot) => {
         setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
-      (error) => handleFirestoreError(error, OperationType.LIST, 'customers')
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'customers');
+      }
     );
   }, []);
 
@@ -32,17 +37,19 @@ export default function Customers() {
     try {
       if (editingCustomer) {
         await dbService.updateDocument('customers', editingCustomer.id, data);
+        showToast('Client mis à jour', 'success');
       } else {
         await dbService.addDocument('customers', {
           ...data,
           totalSpent: 0
         });
+        showToast('Client créé', 'success');
       }
       setIsModalOpen(false);
       setEditingCustomer(null);
       reset();
     } catch (error) {
-      // Handled
+      showToast('Erreur lors de l\'enregistrement', 'error');
     }
   };
 
@@ -56,8 +63,9 @@ export default function Customers() {
     if (window.confirm('Supprimer ce client ?')) {
       try {
         await dbService.deleteDocument('customers', id);
+        showToast('Client supprimé', 'success');
       } catch (error) {
-        // Handled
+        showToast('Erreur lors de la suppression', 'error');
       }
     }
   };
@@ -65,6 +73,7 @@ export default function Customers() {
   const filtered = customers.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     c.phone?.includes(searchQuery) ||
+    c.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.clientCode?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -124,8 +133,8 @@ export default function Customers() {
         <table className="dolisoft-table">
           <thead>
             <tr>
-              <th>Désignation Client</th>
-              <th>Code</th>
+              <th>Désignation Client / Société</th>
+              <th>Code Client</th>
               <th>Contact (Mobile/Email)</th>
               <th className="text-right">Total Achats</th>
               <th className="w-20 text-center">...</th>
@@ -140,7 +149,10 @@ export default function Customers() {
                       {client.name[0]}
                     </div>
                     <div>
-                      <p className="font-bold text-slate-800 text-sm leading-tight">{client.name}</p>
+                      <p className="font-bold text-slate-800 text-sm leading-tight">
+                        {client.name}
+                        {client.company && <span className="ml-2 text-blue-600">({client.company})</span>}
+                      </p>
                       <p className="text-[10px] text-slate-400 font-bold uppercase italic">
                          {client.address || 'Aucune adresse enregistrée'}
                       </p>
@@ -186,7 +198,11 @@ export default function Customers() {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-2 gap-6">
              <div className="col-span-2">
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Raison Sociale / Nom Complet *</label>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Raison Sociale / Société</label>
+                <input {...register('company')} className="w-full px-4 py-2 bg-slate-50 border border-slate-300 font-bold text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="Ex: SARL MZ SOFT" />
+             </div>
+             <div className="col-span-2">
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Nom Complet du Contact *</label>
                 <input {...register('name', { required: true })} className="w-full px-4 py-2 bg-slate-50 border border-slate-300 font-bold text-sm outline-none focus:ring-1 focus:ring-blue-500" />
              </div>
              <div>

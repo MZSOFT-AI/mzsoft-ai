@@ -8,19 +8,24 @@ import { Plus, Edit2, Trash2, Tags as TagIcon, PackageCheck } from 'lucide-react
 import Modal from '../components/ui/Modal';
 import { useForm } from 'react-hook-form';
 
+import { useNotification } from '../context/NotificationContext';
+
 export default function Categories() {
+  const { showToast } = useNotification();
   const [categories, setCategories] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const { register, handleSubmit, reset } = useForm();
-
+  
   useEffect(() => {
     return onSnapshot(
       query(collection(db, 'categories'), orderBy('name')), 
       (snapshot) => {
         setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
-      (error) => handleFirestoreError(error, OperationType.LIST, 'categories')
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'categories');
+      }
     );
   }, []);
 
@@ -28,17 +33,19 @@ export default function Categories() {
     try {
       if (editingCategory) {
         await dbService.updateDocument('categories', editingCategory.id, data);
+        showToast('Catégorie mise à jour', 'success');
       } else {
         await dbService.addDocument('categories', {
           ...data,
           productCount: 0
         });
+        showToast('Catégorie créée', 'success');
       }
       setIsModalOpen(false);
       setEditingCategory(null);
       reset();
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'categories');
+      showToast('Erreur lors de l\'enregistrement', 'error');
     }
   };
 
@@ -52,8 +59,9 @@ export default function Categories() {
     if (window.confirm('Voulez-vous vraiment supprimer cette catégorie ?')) {
       try {
         await dbService.deleteDocument('categories', id);
+        showToast('Catégorie supprimée', 'success');
       } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `categories/${id}`);
+        showToast('Erreur lors de la suppression', 'error');
       }
     }
   };

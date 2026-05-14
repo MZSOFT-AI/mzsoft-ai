@@ -7,12 +7,15 @@ import Modal from './ui/Modal';
 import { Button } from './ui/Button';
 import { Trash2, Plus, Tag } from 'lucide-react';
 
+import { useNotification } from '../context/NotificationContext';
+
 interface CategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
 const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose }) => {
+  const { showToast } = useNotification();
   const [categories, setCategories] = useState<any[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,9 +44,10 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose }) => {
         name: newCategory.trim(),
         createdAt: new Date()
       });
+      showToast('Catégorie ajoutée', 'success');
       setNewCategory('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'categories');
+      showToast('Erreur lors de l\'ajout', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -54,8 +58,9 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose }) => {
 
     try {
       await dbService.deleteDocument('categories', id);
+      showToast('Catégorie supprimée', 'success');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `categories/${id}`);
+      showToast('Erreur lors de la suppression', 'error');
     }
   };
 
@@ -86,7 +91,8 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose }) => {
               </div>
               <button 
                 onClick={() => handleDeleteCategory(cat.id)}
-                className="p-2 text-slate-400 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
+                className="p-2 text-rose-400 hover:text-rose-600 transition-colors border border-transparent hover:border-rose-100 hover:bg-rose-50 rounded-lg"
+                title="Supprimer"
               >
                 <Trash2 size={16} />
               </button>

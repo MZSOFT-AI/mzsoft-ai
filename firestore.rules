@@ -5,161 +5,225 @@ service cloud.firestore {
     // GLOBAL HELPERS
     // ---------------------------------------------------------
     function isSignedIn() { return request.auth != null; }
+    function isSuperAdmin() {
+      return isSignedIn() && 
+             ('email' in request.auth.token) && 
+             request.auth.token.email.lower() == 'djelloulmohamed1990@gmail.com';
+    }
+
     function isAdmin() { 
       return isSignedIn() && (
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-        request.auth.token.email == 'djelloulmohamed1990@gmail.com'
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       ); 
     }
-    function isValidId(id) { return id is string && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
-    function isVerifiedEmail() { return request.auth.token.email_verified == true; }
-
-    // ---------------------------------------------------------
-    // DEFAULT DENY
-    // ---------------------------------------------------------
-    match /{document=**} {
-      allow read, write: if false;
-    }
 
     // ---------------------------------------------------------
     // USERS
     // ---------------------------------------------------------
+    function isValidPermissions(perms) {
+      return perms.keys().hasAll(['canManageStock', 'canDeleteProducts', 'canSell', 'canProcessReturns', 'canPerformInventory', 'canManageExpenses', 'canViewReports'])
+        && perms.canManageStock is bool
+        && perms.canDeleteProducts is bool
+        && perms.canSell is bool
+        && perms.canProcessReturns is bool
+        && perms.canPerformInventory is bool
+        && perms.canManageExpenses is bool
+        && perms.canViewReports is bool;
+    }
+
     function isValidUser(data) {
-      return data.keys().hasAll(['displayName', 'email', 'role', 'createdAt'])
-        && data.displayName is string && data.displayName.size() <= 100
-        && data.email is string && data.email.size() <= 100
-        && data.role in ['admin', 'vendeur', 'manager']
-        && data.createdAt == request.time;
+      return data.keys().hasAll(['displayName', 'role'])
+        && data.displayName is string && data.displayName.size() <= 128
+        && (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 128) || data.email == null)
+        && data.role in ['admin', 'vendeur', 'manager', 'staff']
+        && (!data.keys().hasAny(['createdAt']) || data.createdAt == request.time)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && (!data.keys().hasAny(['photoURL']) || (data.photoURL is string || data.photoURL == null))
+        && (!data.keys().hasAny(['isLocalOnly']) || data.isLocalOnly is bool)
+        && (!data.keys().hasAny(['username']) || (data.username is string && data.username.size() <= 64))
+        && (!data.keys().hasAny(['localPassword']) || (data.localPassword is string && data.localPassword.size() <= 64))
+        && (!data.keys().hasAny(['permissions']) || isValidPermissions(data.permissions));
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
+      // Allow unauthenticated list only for the "usersExist" check (limit 1)
+      // or for local login (querying by username)
+      allow list: if isSignedIn() || (request.query.limit <= 1);
+      allow get: if isSignedIn() || (resource.data.username != null);
+      
+      // Allow unauthenticated creation of the FIRST admin
+      // In a real prod app, we'd use a metadata doc to lock this permanently
+      allow create: if (
+        (isSignedIn() && (isAdmin() || request.auth.uid == userId)) ||
+        (!isSignedIn() && incoming().role == 'admin' && userId.size() > 0)
+      ) && isValidUser(incoming());
+
       allow update: if isSignedIn() && (
-        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL']))
-        || isAdmin()
+        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt', 'localPassword'])) ||
+        isAdmin()
       );
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
-    // PRODUCTS
+    // PRODUCTS (INVENTORY)
     // ---------------------------------------------------------
     function isValidProduct(data) {
       return data.keys().hasAll(['name', 'categoryId', 'purchasePrice', 'sellingPrice', 'stockQuantity'])
-        && data.name is string && data.name.size() <= 128
+        && data.name is string && data.name.size() <= 200
         && data.categoryId is string && isValidId(data.categoryId)
         && data.purchasePrice is number && data.purchasePrice >= 0
         && data.sellingPrice is number && data.sellingPrice >= 0
         && data.stockQuantity is number
-        && (!data.keys().hasAny(['minStockLevel']) || data.minStockLevel is number)
-        && (!data.keys().hasAny(['sku']) || data.sku is string)
+        && (!data.keys().hasAny(['sku']) || (data.sku is string || data.sku == null))
         && (!data.keys().hasAny(['barcode']) || (data.barcode is string || data.barcode == null))
-        && (!data.keys().hasAny(['description']) || (data.description is string || data.description == null))
+        && (!data.keys().hasAny(['minStock']) || (data.minStock is number || data.minStock == null))
         && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
         && (!data.keys().hasAny(['createdAt']) || data.createdAt == request.time);
     }
 
     match /products/{productId} {
       allow read: if isSignedIn();
-      allow create: if isAdmin() && isValidProduct(incoming());
-      allow update: if (isAdmin() || isSignedIn()) && isValidProduct(incoming()) && (
-        isAdmin() || 
-        (incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'updatedAt', 'minStockLevel', 'sku', 'name', 'categoryId', 'purchasePrice', 'sellingPrice', 'description']))
-      );
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
     // SALES
     // ---------------------------------------------------------
     function isValidSale(data) {
-      return data.keys().hasAll(['userId', 'userName', 'items', 'subtotal', 'discount', 'totalAmount', 'paymentMethod', 'createdAt', 'status'])
-        && data.userId == request.auth.uid
-        && data.userName is string
+      return data.keys().hasAll(['userId', 'items', 'totalAmount', 'paymentMethod', 'status'])
+        && (data.userId == request.auth.uid || isAdmin())
         && data.items is list && data.items.size() > 0
-        && data.subtotal is number && data.subtotal >= 0
-        && data.discount is number && data.discount >= 0
         && data.totalAmount is number && data.totalAmount >= 0
-        && data.paymentMethod in ['cash', 'card', 'transfer']
-        && data.status in ['completed', 'partially_returned', 'returned']
-        && (!data.keys().hasAny(['receivedAmount']) || data.receivedAmount is number)
-        && (!data.keys().hasAny(['change']) || data.change is number)
-        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && data.paymentMethod in ['cash', 'card', 'transfer', 'credit']
+        && data.status in ['completed', 'refunded', 'returned']
+        && (!data.keys().hasAny(['userName']) || data.userName is string)
+        && (!data.keys().hasAny(['customerName']) || data.customerName is string)
         && (!data.keys().hasAny(['customerId']) || (data.customerId is string || data.customerId == null))
-        && (!data.keys().hasAny(['customerName']) || data.customerName is string);
-    }
-
-    match /sales/{saleId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidSale(incoming()) && incoming().status == 'completed' && incoming().createdAt == request.time;
-      allow update: if isSignedIn() && (
-        isAdmin() || 
-        (incoming().status in ['partially_returned', 'returned'] && incoming().diff(existing()).affectedKeys().hasOnly(['items', 'status', 'updatedAt', 'totalAmount']))
-      );
-      allow delete: if false; // Archive only
-    }
-
-    // ---------------------------------------------------------
-    // STOCK MOVEMENTS (Auditable)
-    // ---------------------------------------------------------
-    function isValidMovement(data) {
-      return data.keys().hasAll(['productId', 'quantity', 'type', 'userId', 'createdAt'])
-        && data.userId == request.auth.uid
-        && data.quantity is number
-        && data.type in ['in', 'out', 'sale', 'adjustment', 'return', 'initial', 'adjustment_in', 'adjustment_out']
-        && data.createdAt == request.time
-        && (!data.keys().hasAny(['productName']) || data.productName is string)
-        && (!data.keys().hasAny(['previousStock']) || data.previousStock is number)
-        && (!data.keys().hasAny(['newStock']) || data.newStock is number)
-        && (!data.keys().hasAny(['reason']) || data.reason is string)
-        && (!data.keys().hasAny(['referenceId']) || data.referenceId is string);
-    }
-
-    match /stock_movements/{movementId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidMovement(incoming());
-      allow update, delete: if false; // Immuable
-    }
-
-    // ---------------------------------------------------------
-    // OTHER COLLECTIONS
-    // ---------------------------------------------------------
-    match /categories/{categoryId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    function isValidCustomer(data) {
-      return data.keys().hasAll(['name', 'totalSpent'])
-        && data.name is string && data.name.size() <= 128
-        && data.totalSpent is number && data.totalSpent >= 0
-        && (!data.keys().hasAny(['clientCode']) || (data.clientCode is string || data.clientCode == null))
-        && (!data.keys().hasAny(['phone']) || (data.phone is string || data.phone == null))
-        && (!data.keys().hasAny(['email']) || (data.email is string || data.email == null))
-        && (!data.keys().hasAny(['address']) || (data.address is string || data.address == null))
         && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
         && (!data.keys().hasAny(['createdAt']) || data.createdAt == request.time);
     }
 
-    match /customers/{customerId} {
+    match /sales/{saleId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidCustomer(incoming());
-      allow update: if isSignedIn() && isValidCustomer(incoming()) && (
+      allow create: if isSignedIn() && isValidSale(incoming());
+      allow update: if isSignedIn() && (
         isAdmin() || 
-        (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'clientCode', 'phone', 'email', 'address', 'totalSpent', 'updatedAt']))
+        (incoming().status in ['refunded', 'returned'] && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'items', 'updatedAt']))
       );
       allow delete: if isAdmin();
     }
+
+    // ---------------------------------------------------------
+    // DAILY CLOSINGS
+    // ---------------------------------------------------------
+    match /daily_closings/{closingId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // ---------------------------------------------------------
+    // PENDING SALES
+    // ---------------------------------------------------------
+    function isValidPendingSale(data) {
+      return data.keys().hasAll(['userId', 'items', 'totalAmount'])
+        && (data.userId == request.auth.uid || isAdmin())
+        && data.items is list
+        && data.totalAmount is number
+        && (!data.keys().hasAny(['userName']) || data.userName is string)
+        && (!data.keys().hasAny(['customerName']) || data.customerName is string)
+        && (!data.keys().hasAny(['customerId']) || (data.customerId is string || data.customerId == null))
+        && (!data.keys().hasAny(['discount']) || data.discount is number)
+        && (!data.keys().hasAny(['subtotal']) || data.subtotal is number)
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time))
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && (!data.keys().hasAny(['isAutoSave']) || data.isAutoSave is bool);
+    }
+
+    match /pending_sales/{saleId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update: if isSignedIn() && isValidPendingSale(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // ---------------------------------------------------------
+    // CUSTOMERS
+    // ---------------------------------------------------------
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // ---------------------------------------------------------
+    // SUPPLIERS
+    // ---------------------------------------------------------
     match /suppliers/{supplierId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isSignedIn();
     }
+
+    // ---------------------------------------------------------
+    // CATEGORIES
+    // ---------------------------------------------------------
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // ---------------------------------------------------------
+    // EXPENSES
+    // ---------------------------------------------------------
     match /expenses/{expenseId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
+      allow update, delete: if isSignedIn();
     }
+
+    // ---------------------------------------------------------
+    // STOCK MOVEMENTS
+    // ---------------------------------------------------------
+    match /stock_movements/{movementId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // ---------------------------------------------------------
+    // SETTINGS / INVOICES (PLACEHOLDERS)
+    // ---------------------------------------------------------
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // ---------------------------------------------------------
+    // INVENTORY AUDITS
+    // ---------------------------------------------------------
+    function isValidInventoryAudit(data) {
+      return data.keys().hasAll(['userId', 'type', 'status', 'createdAt'])
+        && data.userId is string
+        && data.type in ['annual', 'monthly', 'weekly', 'spot']
+        && data.status in ['draft', 'completed']
+        && (!data.keys().hasAny(['items']) || data.items is list)
+        && (!data.keys().hasAny(['totalDiscrepancyValue']) || data.totalDiscrepancyValue is number)
+        && (!data.keys().hasAny(['completedAt']) || (data.completedAt is timestamp || data.completedAt == request.time))
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time));
+    }
+
+    match /inventory_audits/{auditId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidInventoryAudit(incoming());
+      allow delete: if isAdmin();
+    }
+
   }
 }

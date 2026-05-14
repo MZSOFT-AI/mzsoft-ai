@@ -1,9 +1,18 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { motion } from 'motion/react';
+import { useSession } from '../../context/SessionContext';
+import StartSessionModal from '../StartSessionModal';
 
 const Layout: React.FC = () => {
+  const { activeSession, loading } = useSession();
+  const location = useLocation();
+
+  // Pages that require an active session
+  const sessionPages = ['/pos'];
+  const needsSession = sessionPages.includes(location.pathname);
+
   return (
     <div className="min-h-screen bg-slate-100 flex">
       <Sidebar />
@@ -12,6 +21,7 @@ const Layout: React.FC = () => {
            <Outlet />
         </div>
       </main>
+      <StartSessionModal isOpen={!loading && !activeSession && needsSession} />
     </div>
   );
 };

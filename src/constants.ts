@@ -26,7 +26,9 @@ import {
   Truck,
   BarChart2,
   DollarSign,
-  Settings
+  Settings,
+  Wallet,
+  ClipboardList
 } from 'lucide-react';
 
 export const APP_CONFIG = {
@@ -40,12 +42,14 @@ export const MENU_ITEMS = [
   { id: 'dashboard', label: 'Tableau de bord', path: '/', icon: LayoutDashboard },
   { id: 'pos', label: 'Vente (POS)', path: '/pos', icon: ShoppingCart },
   { id: 'inventory', label: 'Stock / Produits', path: '/inventory', icon: Box },
+  { id: 'inventory-audits', label: 'Inven. Physique', path: '/inventory/audits', icon: ClipboardList },
   { id: 'stock-movements', label: 'Historique Stock', path: '/stock-movements', icon: History },
   { id: 'categories', label: 'Catégories', path: '/categories', icon: Tags },
   { id: 'sales-history', label: 'Historique Ventes', path: '/sales-history', icon: History },
   { id: 'customers', label: 'Clients', path: '/customers', icon: Users2 },
   { id: 'suppliers', label: 'Fournisseurs', path: '/suppliers', icon: Truck },
   { id: 'expenses', label: 'Dépenses', path: '/expenses', icon: DollarSign },
+  { id: 'cash-history', label: 'Historique Caisse', path: '/cash-history', icon: Wallet },
   { id: 'reports', label: 'Rapports', path: '/reports', icon: BarChart2 },
   { id: 'settings', label: 'Paramètres', path: '/settings', icon: Settings },
 ];

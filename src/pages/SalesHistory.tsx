@@ -14,16 +14,20 @@ import Modal from '../components/ui/Modal';
 import { useNotification } from '../context/NotificationContext';
 
 export default function SalesHistory() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { showToast } = useNotification();
   const [sales, setSales] = useState<any[]>([]);
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [isReturning, setIsReturning] = useState(false);
+
+  const canProcessReturns = hasPermission('canProcessReturns');
 
   useEffect(() => {
     return onSnapshot(
-      query(collection(db, 'sales'), orderBy('createdAt', 'desc'), limit(50)), 
+      query(collection(db, 'sales'), orderBy('createdAt', 'desc'), limit(200)), 
       (snapshot) => {
         setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
@@ -63,10 +67,24 @@ export default function SalesHistory() {
         if (!productDoc.exists()) throw new Error("Produit introuvable dans l'inventaire");
         
         const currentStock = productDoc.data().stockQuantity;
+        const refundAmount = item.price * quantity;
         
         transaction.update(productRef, {
           stockQuantity: increment(quantity),
           updatedAt: serverTimestamp()
+        });
+
+        // Record a negative financial movement in expenses to reflect money given back
+        const expenseRef = doc(collection(db, 'expenses'));
+        transaction.set(expenseRef, {
+          category: 'RETOUR CLIENT',
+          reason: `Remboursement: ${item.name} (Qté: ${quantity}) - Vente ${sale.id}`,
+          amount: refundAmount,
+          userId: user?.uid,
+          userName: user?.displayName || 'Système',
+          date: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          saleId: sale.id
         });
 
         const movementRef = doc(collection(db, 'stock_movements'));
@@ -111,6 +129,102 @@ export default function SalesHistory() {
     }
   };
 
+  const handleReturnAllItems = async (sale: any) => {
+    if (!window.confirm("Voulez-vous retourner TOUS les articles restants de cette vente ?")) return;
+
+    setIsReturning(true);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const saleRef = doc(db, 'sales', sale.id);
+        const updatedItems = [...sale.items];
+        let totalRefundAmount = 0;
+
+        // 1. Collect all product data (READS)
+        const itemsToReturn: any[] = [];
+        for (let i = 0; i < updatedItems.length; i++) {
+          const item = updatedItems[i];
+          const availableToReturn = item.quantity - (item.returnedQuantity || 0);
+          
+          if (availableToReturn > 0) {
+            const productId = item.productId || item.id;
+            const productRef = doc(db, 'products', productId);
+            const productDoc = await transaction.get(productRef);
+            
+            if (productDoc.exists()) {
+              itemsToReturn.push({
+                item,
+                productRef,
+                currentStock: productDoc.data().stockQuantity,
+                available: availableToReturn,
+                index: i
+              });
+            }
+          }
+        }
+
+        // 2. Perform all WRITES
+        for (const data of itemsToReturn) {
+          const { item, productRef, currentStock, available, index } = data;
+          const productId = item.productId || item.id;
+          
+          totalRefundAmount += item.price * available;
+          
+          transaction.update(productRef, {
+            stockQuantity: increment(available),
+            updatedAt: serverTimestamp()
+          });
+
+          const movementRef = doc(collection(db, 'stock_movements'));
+          transaction.set(movementRef, cleanObject({
+            productId: productId,
+            productName: item.name,
+            type: 'return',
+            quantity: available,
+            unit: item.unit || 'u',
+            previousStock: currentStock,
+            newStock: currentStock + available,
+            reason: `Retour Global - Vente ${sale.id}`,
+            referenceId: sale.id,
+            userId: user?.uid,
+            userName: user?.displayName || 'Système',
+            createdAt: serverTimestamp()
+          }));
+
+          updatedItems[index] = {
+            ...item,
+            returnedQuantity: item.quantity
+          };
+        }
+
+        // Record total refund as expense
+        if (totalRefundAmount > 0) {
+          const expenseRef = doc(collection(db, 'expenses'));
+          transaction.set(expenseRef, {
+            category: 'RETOUR CLIENT',
+            reason: `Remboursement Global - Vente ${sale.id}`,
+            amount: totalRefundAmount,
+            userId: user?.uid,
+            userName: user?.displayName || 'Système',
+            date: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            saleId: sale.id
+          });
+        }
+
+        transaction.update(saleRef, {
+          items: updatedItems,
+          status: 'returned',
+          updatedAt: serverTimestamp()
+        });
+      });
+      showToast("Vente totalement retournée", "success");
+    } catch (error: any) {
+      showToast(error.message || "Erreur lors du retour global", "error");
+    } finally {
+      setIsReturning(false);
+    }
+  };
+
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case 'returned': return <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-rose-50 text-rose-500 border border-rose-100 italic">Annulée</span>;
@@ -119,11 +233,32 @@ export default function SalesHistory() {
     }
   };
 
-  const filteredSales = sales.filter(s => 
-    s.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    s.userName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.customerName?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredSales = sales.filter(s => {
+    const matchesSearch = 
+      s.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      s.userName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.customerName?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (!matchesSearch) return false;
+
+    if (startDate || endDate) {
+      const saleDate = s.createdAt?.toDate ? s.createdAt.toDate() : (s.createdAt ? new Date(s.createdAt) : new Date());
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (saleDate < start) return false;
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (saleDate > end) return false;
+      }
+    }
+
+    return true;
+  });
 
   const handleDownloadInvoice = (sale: any) => {
     pdfService.generateInvoice({
@@ -140,6 +275,27 @@ export default function SalesHistory() {
       change: sale.change,
       paymentMethod: sale.paymentMethod,
       userName: sale.userName || 'Admin'
+    });
+  };
+
+  const handleDownloadReturnSlip = (sale: any) => {
+    const returnedItems = sale.items.filter((i: any) => (i.returnedQuantity || 0) > 0);
+    if (returnedItems.length === 0) {
+      showToast("Aucun article retourné pour cette vente", "info");
+      return;
+    }
+
+    const totalRefund = returnedItems.reduce((sum: number, i: any) => sum + (i.returnedQuantity * i.price), 0);
+
+    pdfService.generateReturnSlip({
+      invoiceNumber: sale.id,
+      date: new Date(),
+      originalSaleDate: sale.createdAt?.toDate() || new Date(),
+      customerName: sale.customerName || 'Client de passage',
+      items: sale.items,
+      refundAmount: totalRefund,
+      paymentMethod: sale.paymentMethod,
+      userName: user?.displayName || 'Admin'
     });
   };
 
@@ -171,9 +327,43 @@ export default function SalesHistory() {
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-9 text-[10px] font-black uppercase">
-                <Filter size={16} className="mr-2" /> Période
+            <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 px-3 py-2">
+                <Calendar size={14} className="text-slate-400" />
+                <input 
+                  type="date" 
+                  value={startDate} 
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent text-[10px] font-black uppercase outline-none"
+                />
+                <span className="text-slate-300 font-bold text-[10px]">AU</span>
+                <input 
+                  type="date" 
+                  value={endDate} 
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-transparent text-[10px] font-black uppercase outline-none"
+                />
+                {(startDate || endDate) && (
+                  <button 
+                    onClick={() => { setStartDate(''); setEndDate(''); }} 
+                    className="ml-1 text-slate-400 hover:text-rose-500 transition-colors"
+                    title="Réinitialiser les dates"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                )}
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className={`h-full text-[10px] font-black uppercase ${startDate || endDate ? 'bg-blue-50 border-blue-200 text-blue-600' : ''}`}
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  setStartDate(today);
+                  setEndDate(today);
+                }}
+              >
+                Aujourd'hui
               </Button>
             </div>
           </div>
@@ -224,9 +414,22 @@ export default function SalesHistory() {
                     <button onClick={() => handleDownloadInvoice(sale)} className="p-1.5 text-slate-400 hover:text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50" title="Imprimer Ticket">
                       <Printer size={14} />
                     </button>
-                    <button onClick={() => setSelectedSale(sale)} className="p-1.5 text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 hover:bg-slate-50">
+                    <button onClick={() => setSelectedSale(sale)} className="p-1.5 text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 hover:bg-slate-50" title="Détails / Retour">
                       <Eye size={14} />
                     </button>
+                    {sale.status !== 'returned' && (
+                      <button 
+                        onClick={() => {
+                          setSelectedSale(sale);
+                          // We open details so they can choose specific items, 
+                          // but highlighting the return action
+                        }} 
+                        className="p-1.5 text-rose-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50" 
+                        title="Effectuer un Retour"
+                      >
+                        <RotateCcw size={14} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -258,6 +461,15 @@ export default function SalesHistory() {
             <div className="bg-slate-50 border border-slate-200">
                <div className="p-2 border-b border-slate-200 flex justify-between">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2">Liste des Articles</span>
+                  {selectedSale.status !== 'returned' && canProcessReturns && (
+                    <button 
+                      onClick={() => handleReturnAllItems(selectedSale)}
+                      disabled={isReturning}
+                      className="text-[9px] font-black uppercase text-rose-500 hover:text-rose-700 underline underline-offset-2 px-2"
+                    >
+                      Tout Retourner
+                    </button>
+                  )}
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2">Montant</span>
                </div>
                <div className="divide-y divide-slate-100">
@@ -279,7 +491,7 @@ export default function SalesHistory() {
                           </div>
                         )}
 
-                        {availableToReturn > 0 && (
+                        {availableToReturn > 0 && canProcessReturns && (
                           <button 
                             onClick={() => handleReturnItem(selectedSale, item)}
                             disabled={isReturning}
@@ -301,6 +513,14 @@ export default function SalesHistory() {
                     <span className="uppercase tracking-tighter">Total Net (DA)</span>
                     <span className="text-blue-700">{formatCurrency(selectedSale.totalAmount)}</span>
                   </div>
+                  
+                  {selectedSale.items.some((i: any) => i.returnedQuantity > 0) && (
+                    <div className="flex justify-between text-lg font-black text-rose-600 bg-rose-50 p-2 mt-4 border border-rose-100 italic">
+                      <span className="uppercase tracking-tighter">Total Remboursé</span>
+                      <span>{formatCurrency(selectedSale.items.reduce((sum: number, i: any) => sum + ((i.returnedQuantity || 0) * i.price), 0))}</span>
+                    </div>
+                  )}
+
                   {selectedSale.paymentMethod === 'cash' && (
                     <div className="pt-2 flex justify-between items-center text-xs">
                        <span className="text-slate-400 font-bold uppercase tracking-widest underline underline-offset-4 decoration-slate-200">Mode: Espèces</span>
@@ -313,11 +533,19 @@ export default function SalesHistory() {
                </div>
             </div>
 
-            <div className="flex gap-2">
-               <Button onClick={() => handleDownloadInvoice(selectedSale)} className="flex-1 bg-blue-600 hover:bg-blue-700 uppercase font-black tracking-widest text-xs h-12">
-                  <Printer size={18} className="mr-2" /> Ré-imprimer Ticket
-               </Button>
-               <Button variant="outline" onClick={() => setSelectedSale(null)} className="flex-1 uppercase font-black tracking-widest text-xs h-12">Fermer</Button>
+            <div className="flex flex-col gap-2 w-full">
+                <div className="flex gap-2">
+                  <Button onClick={() => handleDownloadInvoice(selectedSale)} className="flex-1 bg-blue-600 hover:bg-blue-700 uppercase font-black tracking-widest text-xs h-12">
+                    <Printer size={18} className="mr-2" /> Ré-imprimer Ticket
+                  </Button>
+                  
+                  {selectedSale.items.some((i: any) => i.returnedQuantity > 0) && (
+                    <Button onClick={() => handleDownloadReturnSlip(selectedSale)} className="flex-1 bg-rose-600 hover:bg-rose-700 uppercase font-black tracking-widest text-xs h-12">
+                      <RotateCcw size={18} className="mr-2" /> Bon de Retour
+                    </Button>
+                  )}
+                </div>
+                <Button variant="outline" onClick={() => setSelectedSale(null)} className="w-full uppercase font-black tracking-widest text-xs h-12">Fermer</Button>
             </div>
           </div>
         )}

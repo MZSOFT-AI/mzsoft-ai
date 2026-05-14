@@ -1,24 +1,33 @@
-# Spécification de Sécurité - ERP Pro
+# Security Specification - POS/ERP System
 
-## 1. Invariants de Données
-- Un **produit** doit avoir une quantité positive ou nulle.
-- Une **vente** doit être attachée à l'UID de l'utilisateur qui l'a créée (`request.auth.uid`).
-- Les **mouvements de stock** sont immuables (pas de suppression ni de modification, juste des nouveaux mouvements pour correction).
-- Un utilisateur ne peut pas s'auto-assigner le rôle `admin`.
+## 1. Data Invariants
+- Every sale must be linked to a valid user (`userId`).
+- Inventory movements must track `previousStock` and `newStock` for audit.
+- Products must belong to a category.
+- Pending sales are shared across the team (all signed-in users) but tracked by `userId`.
 
-## 2. Payloads de Test (Dirty Dozen)
-1.  **Identity Spoofing**: Tenter de créer une vente avec `userId` d'un autre utilisateur.
-2.  **Privilege Escalation**: Un vendeur tente de passer son rôle à `admin` dans `/users/{uid}`.
-3.  **Cross-Resource Poisoning**: Injection de code/scripts dans le champ `name` d'un produit (max 128 chars).
-4.  **Orphaned Sale**: Créer une vente pour un produit qui n'existe pas.
-5.  **Negative Stock**: Tenter de définir `stockQuantity` à -50 via l'API client.
-6.  **Shadow Update**: Tenter d'ajouter un champ caché `isVip: true` à un profil client.
-7.  **Terminal State Bypass**: Tenter de modifier une vente déjà marquée comme `completed`.
-8.  **Price Tampering**: Tenter de modifier le `sellingPrice` d'un produit en tant que vendeur.
-9.  **Denial of Wallet**: Envoyer un document de 1MB dans le champ `description`.
-10. **Time Spoofing**: Envoyer un `createdAt` dans le passé au lieu du `request.time` du serveur.
-11. **PII Leak**: Un vendeur tente de lister tous les documents de la collection `users` (sensible).
-12. **Unauthorized Refund**: Un vendeur tente de passer le statut d'une vente à `refunded` (action réservée admin).
+## 2. Access Control Strategy
+- **Authentication**: All users must be signed in via Google.
+- **Identity**: `request.auth.uid` must match `userId` for personal data (expenses, sales ownership).
+- **Public/Shared Data**: Products, Categories, Suppliers, Customers, and Pending Sales are readable and writable by any authenticated user to ensure smooth ERP operations as requested.
+- **Admin Override**: `djelloulmohamed1990@gmail.com` and users with `role == 'admin'` have full override permissions.
 
-## 3. Validation
-Toutes les tentatives ci-dessus doivent retourner `PERMISSION_DENIED`.
+## 3. Implementation Plan
+- Update `isAdmin()` to be more robust.
+- Open up `write` permissions for `categories`, `suppliers`, `customers`, and `products` to all `isSignedIn()` users, while keeping validation helpers.
+- Ensure `pending_sales` is fully CRUDable by any signed-in user.
+- Add `settings` and `invoices` placeholders.
+
+## 4. The "Dirty Dozen" (Payload Test Cases)
+1. Unauthenticated write to `products` -> FAIL.
+2. Authenticated user setting `userId` to another UID in `sales` -> FAIL.
+3. Updating immutable `createdAt` field in `products` -> FAIL.
+4. Deleting a `sale` record -> FAIL (Sales are immutable/audit-only).
+5. Injecting a 1MB string into `customer.name` -> FAIL.
+6. Creating a `user` profile with `role: 'admin'` as a normal user -> FAIL.
+7. Updating stock without specifying a `number` type -> FAIL.
+8. Removing `items` list from a `sale` during creation -> FAIL.
+9. Creating a pending sale without being signed in -> FAIL.
+10. Modifying `totalSpent` of a customer to a negative number -> FAIL.
+11. Bypassing validation with extra fields not in schema -> FAIL (via strict schema).
+12. Scanning for users list as a non-admin -> FAIL.

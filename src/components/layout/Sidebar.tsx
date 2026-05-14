@@ -6,7 +6,7 @@ import { LogOut, Package, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const Sidebar: React.FC = () => {
-  const { logout, user, userData } = useAuth();
+  const { logout, user, userData, isAdmin, hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -14,11 +14,18 @@ const Sidebar: React.FC = () => {
     navigate('/login');
   };
 
-  const isAdmin = userData?.role === 'admin' || user?.email === 'djelloulmohamed1990@gmail.com';
-
   const filteredMenuItems = MENU_ITEMS.filter(item => {
-    if (isAdmin) return true;
-    return ['pos', 'sales-history', 'customers', 'dashboard'].includes(item.id);
+    if (item.id === 'dashboard') return true;
+    if (item.id === 'pos') return hasPermission('canSell');
+    if (item.id === 'inventory') return hasPermission('canManageStock') || hasPermission('canPerformInventory');
+    if (item.id === 'sales-history') return true; // Everyone sees history but can't return without permission
+    if (item.id === 'cash-history') return userData?.role === 'admin' || userData?.role === 'manager';
+    if (item.id === 'expenses') return hasPermission('canManageExpenses');
+    if (item.id === 'reports') return hasPermission('canViewReports');
+    if (item.id === 'settings') return isAdmin;
+    if (item.id === 'customers') return true;
+    if (item.id === 'suppliers') return hasPermission('canManageStock');
+    return true;
   });
 
   return (
@@ -43,7 +50,7 @@ const Sidebar: React.FC = () => {
                <User size={16} />
             </div>
             <div className="flex-1 min-w-0">
-               <p className="text-xs font-bold truncate text-slate-200">{user?.displayName || 'Vendeur'}</p>
+               <p className="text-xs font-bold truncate text-slate-200">{userData?.displayName || user?.displayName || 'Utilisateur'}</p>
                <p className="text-[9px] text-blue-400 font-bold uppercase tracking-widest">{userData?.role || 'Employé'}</p>
             </div>
          </div>

@@ -19,7 +19,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
     );
   }
 
-  if (!user) {
+  if (!user && !userData) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

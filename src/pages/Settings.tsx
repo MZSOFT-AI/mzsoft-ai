@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../context/AuthContext';
+import UserManagement from '../components/UserManagement';
 import { Badge } from '../components/ui/Badge';
 import { 
   User, 
+  Users,
   Settings as SettingsIcon, 
   Bell, 
   Shield, 
@@ -19,11 +21,12 @@ import {
 } from 'lucide-react';
 
 export default function Settings() {
-  const { userData, logout } = useAuth();
+  const { userData, logout, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
 
   const tabs = [
     { id: 'profile', label: 'Profil', icon: User },
+    ...(isAdmin ? [{ id: 'users', label: 'Utilisateurs', icon: Users }] : []),
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'security', label: 'Sécurité', icon: Shield },
     { id: 'system', label: 'Système', icon: Database },
@@ -124,6 +127,10 @@ export default function Settings() {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {activeTab === 'users' && isAdmin && (
+            <UserManagement />
           )}
 
           {activeTab === 'security' && (

@@ -6,8 +6,22 @@
       "type": "object",
       "properties": {
         "displayName": { "type": "string" },
+        "username": { "type": "string", "description": "Identifiant de connexion unique" },
         "email": { "type": "string", "format": "email" },
         "role": { "type": "string", "enum": ["admin", "vendeur", "manager"] },
+        "permissions": {
+          "type": "object",
+          "properties": {
+            "canManageStock": { "type": "boolean" },
+            "canDeleteProducts": { "type": "boolean" },
+            "canSell": { "type": "boolean" },
+            "canProcessReturns": { "type": "boolean" },
+            "canPerformInventory": { "type": "boolean" },
+            "canManageExpenses": { "type": "boolean" },
+            "canViewReports": { "type": "boolean" }
+          }
+        },
+        "isLocalOnly": { "type": "boolean", "description": "Si vrai, l'utilisateur n'a pas d'email Google" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["displayName", "email", "role", "createdAt"]
@@ -87,6 +101,85 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["category", "reason", "amount", "userId", "createdAt"]
+    },
+    "PendingSale": {
+      "title": "Vente en instance",
+      "description": "Vente suspendue temporairement",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "items": { "type": "array" },
+        "discount": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" }
+      },
+      "required": ["userId", "items", "totalAmount"]
+    },
+    "StockMovement": {
+      "title": "Mouvement de stock",
+      "description": "Historique des entrées/sorties",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "type": { "type": "string" },
+        "quantity": { "type": "number" },
+        "previousStock": { "type": "number" },
+        "newStock": { "type": "number" },
+        "reason": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "quantity", "type", "userId", "createdAt"]
+    },
+    "DailyClosing": {
+      "title": "Sessions de Caisse",
+      "description": "Historique des sessions et clôtures de caisse par utilisateur",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "closed"] },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "startingCash": { "type": "number", "description": "Fond de caisse au début de journée" },
+        "cashSales": { "type": "number" },
+        "transferSales": { "type": "number" },
+        "totalSales": { "type": "number" },
+        "expenses": { "type": "number" },
+        "netCash": { "type": "number" },
+        "salesCount": { "type": "number" },
+        "closedBy": { "type": "string" },
+        "closedByName": { "type": "string" },
+        "closingNote": { "type": "string" },
+        "actualCashInDrawer": { "type": "number" },
+        "nextSessionCash": { "type": "number", "description": "Argent laissé pour la session suivante" },
+        "difference": { "type": "number" }
+      },
+      "required": ["date", "userId", "status", "startTime", "startingCash"]
+    },
+    "InventoryAudit": {
+      "title": "Inventaire Physique",
+      "description": "Réconciliation périodique du stock (Annuel, Mensuel, Hebdomadaire)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "type": { "type": "string", "enum": ["annual", "monthly", "weekly", "spot"] },
+        "status": { "type": "string", "enum": ["draft", "completed"] },
+        "items": { "type": "array", "description": "Liste des produits avec stock théorique vs réel" },
+        "totalDiscrepancyValue": { "type": "number" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -96,7 +189,10 @@
     "/categories/{categoryId}": { "schema": "object", "description": "Catégories de produits" },
     "/customers/{customerId}": { "schema": "Customer", "description": "Base clients" },
     "/suppliers/{supplierId}": { "schema": "Supplier", "description": "Base fournisseurs" },
-    "/stock_movements/{movementId}": { "schema": "object", "description": "Audit des stocks" },
-    "/expenses/{expenseId}": { "schema": "Expense", "description": "Dépenses" }
+    "/stock_movements/{movementId}": { "schema": "StockMovement", "description": "Audit des stocks" },
+    "/expenses/{expenseId}": { "schema": "Expense", "description": "Dépenses" },
+    "/pending_sales/{saleId}": { "schema": "PendingSale", "description": "Ventes suspendues" },
+    "/daily_closings/{closingId}": { "schema": "DailyClosing", "description": "Clôtures de caisse" },
+    "/inventory_audits/{auditId}": { "schema": "InventoryAudit", "description": "Réconciliations de stock" }
   }
 }

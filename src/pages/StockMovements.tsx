@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Button } from '../components/ui/Button';
+import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { 
   History, 
   Search, 
   Package,
   ArrowUp,
   ArrowDown,
-  Activity
+  Activity,
+  RotateCcw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { cn } from '../lib/utils';
+import { cn, cleanObject } from '../lib/utils';
 
 const STOCK_TYPES: Record<string, { label: string, color: string, text: string }> = {
   initial: { label: 'Stock Initial', color: 'bg-blue-50', text: 'text-blue-600' },
@@ -26,9 +29,12 @@ const STOCK_TYPES: Record<string, { label: string, color: string, text: string }
 };
 
 export default function StockMovements() {
+  const { user } = useAuth();
+  const { showToast } = useNotification();
   const [movements, setMovements] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     return onSnapshot(
@@ -40,8 +46,77 @@ export default function StockMovements() {
     );
   }, []);
 
+  const handleReturnEntry = async (movement: any) => {
+    if (movement.type !== 'in') return;
+    
+    const qtyToReturn = prompt(`Quantité à retourner au fournisseur pour "${movement.productName}" ? (Max: ${movement.quantity})`, movement.quantity.toString());
+    if (!qtyToReturn) return;
+    
+    const quantity = parseFloat(qtyToReturn);
+    if (isNaN(quantity) || quantity <= 0 || quantity > movement.quantity) {
+      showToast("Quantité invalide", "error");
+      return;
+    }
+
+    if (!window.confirm(`Confirmer le retour de ${quantity} ${movement.unit || 'u'} de "${movement.productName}" au fournisseur ?`)) return;
+
+    setIsProcessing(true);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const productRef = doc(db, 'products', movement.productId);
+        const productDoc = await transaction.get(productRef);
+        
+        if (!productDoc.exists()) throw new Error("Produit introuvable");
+        
+        const currentProductStock = productDoc.data().stockQuantity;
+        if (currentProductStock < quantity) {
+          throw new Error("Stock insuffisant pour effectuer ce retour");
+        }
+
+        // 1. Décrémenter le stock
+        transaction.update(productRef, {
+          stockQuantity: increment(-quantity),
+          updatedAt: serverTimestamp()
+        });
+
+        // 2. Créer le mouvement de sortie (retour fournisseur)
+        const movementRef = doc(collection(db, 'stock_movements'));
+        transaction.set(movementRef, cleanObject({
+          productId: movement.productId,
+          productName: movement.productName,
+          type: 'out',
+          quantity: quantity,
+          unit: movement.unit || 'u',
+          previousStock: currentProductStock,
+          newStock: currentProductStock - quantity,
+          reason: `Retour Fournisseur - (Réf Entrée: ${movement.id})`,
+          referenceId: movement.id,
+          userId: user?.uid,
+          userName: user?.displayName || 'Admin',
+          createdAt: serverTimestamp()
+        }));
+
+        // 3. Marquer le mouvement original comme (partiellement) retourné ? 
+        // Optionnel: on pourrait ajouter un champ 'returnedQuantity' aux mouvements
+        const originalMovementRef = doc(db, 'stock_movements', movement.id);
+        transaction.update(originalMovementRef, {
+          returnedQuantity: increment(quantity)
+        });
+      });
+
+      showToast("Retour fournisseur enregistré avec succès", "success");
+    } catch (error: any) {
+      showToast(error.message || "Erreur lors du retour", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const filteredMovements = movements.filter(m => {
-    const matchesSearch = m.productName?.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchLow = searchQuery.toLowerCase();
+    const matchesSearch = 
+      m.productName?.toLowerCase().includes(searchLow) || 
+      m.billNumber?.toLowerCase().includes(searchLow);
     const matchesType = typeFilter === 'all' || m.type === typeFilter;
     return matchesSearch && matchesType;
   });
@@ -105,12 +180,25 @@ export default function StockMovements() {
               const isPositive = m.newStock > m.previousStock;
 
               return (
-                <tr key={m.id} className="hover:bg-slate-50 transition-colors border-l-2 border-l-transparent hover:border-l-blue-500">
+                <tr key={m.id} className="hover:bg-slate-50 transition-colors border-l-2 border-l-transparent hover:border-l-blue-500 group">
                   <td className="text-xs font-bold text-slate-400 italic">
                     {m.createdAt ? format(m.createdAt.toDate(), 'dd/MM HH:mm') : '-'}
                   </td>
                   <td className="font-bold text-slate-800 text-xs">
-                    {m.productName}
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                         {m.productName}
+                         {(m.returnedQuantity || 0) > 0 && (
+                           <span className="text-[8px] bg-rose-100 text-rose-600 px-1 rounded uppercase font-black">Retourné</span>
+                         )}
+                      </div>
+                      {m.billNumber && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] font-black uppercase text-slate-400">Bon:</span>
+                          <span className="text-[9px] font-mono text-blue-600 font-black">{m.billNumber}</span>
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="text-center">
                     <span className={cn("text-[9px] font-black uppercase px-2 py-0.5 border", typeInfo.color, typeInfo.text, "border-current opacity-70")}>
@@ -118,7 +206,7 @@ export default function StockMovements() {
                     </span>
                   </td>
                   <td className="text-center font-bold text-slate-400 text-xs">
-                    {m.previousStock}
+                    {m.previousStock} <span className="text-[9px] font-normal">{m.unit || 'u'}</span>
                   </td>
                   <td className="text-center">
                     <div className={cn(
@@ -126,14 +214,26 @@ export default function StockMovements() {
                       isPositive ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
                     )}>
                       {isPositive ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
-                      {Math.abs(m.quantity)}
+                      {Math.abs(m.quantity)} <span className="text-[9px] font-normal opacity-70 ml-0.5">{m.unit || 'u'}</span>
                     </div>
                   </td>
                   <td className="text-center font-black text-slate-900 text-xs">
-                    {m.newStock}
+                    {m.newStock} <span className="text-[9px] font-normal">{m.unit || 'u'}</span>
                   </td>
-                  <td className="text-[10px] font-black uppercase text-slate-400 truncate max-w-[120px]">
-                    {m.userName || 'Admin'}
+                  <td className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-slate-400 truncate max-w-[80px]">
+                      {m.userName || 'Admin'}
+                    </span>
+                    {m.type === 'in' && (m.returnedQuantity || 0) < m.quantity && (
+                      <button 
+                        onClick={() => handleReturnEntry(m)}
+                        disabled={isProcessing}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-600 transition-all"
+                        title="Retourner au fournisseur"
+                      >
+                        <RotateCcw size={12} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               );

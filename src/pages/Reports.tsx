@@ -25,11 +25,28 @@ import { fr } from 'date-fns/locale';
 
 const CHART_COLORS = ['#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#e2e8f0'];
 
+import { useAuth } from '../context/AuthContext';
+
 export default function Reports() {
+  const { user, hasPermission } = useAuth();
   const [sales, setSales] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const canView = hasPermission('canViewReports');
+
+  if (!canView) {
+    return (
+      <div className="h-full flex items-center justify-center p-6 text-center">
+        <div className="bg-white p-12 border border-slate-200">
+           <TrendingUp size={48} className="text-slate-200 mx-auto mb-4" />
+           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Restreint</h2>
+           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation de consulter les analyses financières.</p>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const unsubSales = onSnapshot(
@@ -170,8 +187,8 @@ export default function Reports() {
           <CardHeader>
             <CardTitle>Revenus par Jour</CardTitle>
           </CardHeader>
-          <CardContent className="min-h-[350px] h-[350px]">
-             <ResponsiveContainer width="100%" height={350}>
+          <CardContent className="h-[350px] w-full min-h-[350px] relative min-w-0">
+             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                <AreaChart data={salesByDate.length > 0 ? salesByDate : [
                  {date: '01/05', revenue: 4000}, {date: '02/05', revenue: 3000}, {date: '03/05', revenue: 5000}
                ]} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -195,8 +212,8 @@ export default function Reports() {
           <CardHeader>
             <CardTitle>Inventaire par Catégorie</CardTitle>
           </CardHeader>
-          <CardContent className="min-h-[350px] h-[350px]">
-             <ResponsiveContainer width="100%" height={350}>
+          <CardContent className="h-[350px] w-full min-h-[350px] relative min-w-0">
+             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                <PieChart>
                  <Pie
                    data={categoryData.length > 0 ? categoryData : [{name: 'Stock', value: 100}]}
@@ -221,8 +238,8 @@ export default function Reports() {
            <CardHeader>
              <CardTitle>Top Produits par Quantité Stockée</CardTitle>
            </CardHeader>
-           <CardContent className="min-h-[350px] h-[350px]">
-              <ResponsiveContainer width="100%" height={350}>
+           <CardContent className="h-[350px] w-full min-h-[350px] relative min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                 <BarChart data={products.sort((a,b) => (b.stockQuantity || 0) - (a.stockQuantity || 0)).slice(0, 10)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
