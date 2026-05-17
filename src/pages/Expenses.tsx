@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, serverTimestamp, increment, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { dbService } from '../firebase/db';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +16,7 @@ import { useNotification } from '../context/NotificationContext';
 
 export default function Expenses() {
   const { showToast } = useNotification();
-  const { user, hasPermission } = useAuth();
+  const { user, userData, hasPermission } = useAuth();
   const { activeSession } = useSession();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,25 +39,45 @@ export default function Expenses() {
   }
 
   useEffect(() => {
+    const currentUid = user?.uid || userData?.id;
+    if (!currentUid) return;
+
+    const baseQuery = collection(db, 'expenses');
+    // If admin or has view reports perm, see all. Otherwise see only own.
+    const q = (hasPermission('canViewReports')) 
+      ? query(baseQuery, orderBy('createdAt', 'desc'))
+      : query(baseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'));
+
     return onSnapshot(
-      query(collection(db, 'expenses'), orderBy('createdAt', 'desc')),
+      q,
       (snapshot) => {
         setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'expenses')
     );
-  }, []);
+  }, [user, userData, hasPermission]);
 
   const onSubmit = async (data: any) => {
     try {
+      const amount = Number(data.amount);
       await dbService.addDocument('expenses', {
         ...data,
-        amount: Number(data.amount),
+        amount: amount,
         userId: activeSession?.userId || user?.uid,
         userName: activeSession?.userName || user?.displayName || 'Admin',
         actorId: user?.uid,
         createdAt: serverTimestamp(),
       });
+
+      // Update session if active
+      if (activeSession) {
+        await dbService.updateDocument('daily_closings', activeSession.id, {
+          expenses: increment(amount),
+          netCash: increment(-amount),
+          updatedAt: serverTimestamp()
+        });
+      }
+
       showToast('Dépense enregistrée', 'success');
       setIsModalOpen(false);
       reset();
@@ -119,7 +139,7 @@ export default function Expenses() {
 
       {/* ERP Table */}
       <div className="overflow-x-auto border border-slate-200 bg-white shadow-sm">
-        <table className="dolisoft-table">
+        <table className="mzsoft-table">
           <thead>
             <tr>
               <th>Date de Saisie</th>
@@ -134,7 +154,7 @@ export default function Expenses() {
             {filtered.map((expense) => (
               <tr key={expense.id} className="hover:bg-rose-50 transition-colors">
                 <td className="text-xs font-bold text-slate-500">
-                  {expense.createdAt ? format(expense.createdAt.toDate(), 'dd/MM/yyyy HH:mm') : '-'}
+                  {expense.createdAt ? format((expense.createdAt as any)?.toDate ? (expense.createdAt as any).toDate() : (expense.createdAt instanceof Date ? expense.createdAt : new Date()), 'dd/MM/yyyy HH:mm') : '-'}
                 </td>
                 <td>
                   <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200">

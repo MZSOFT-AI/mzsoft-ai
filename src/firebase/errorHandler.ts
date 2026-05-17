@@ -1,5 +1,6 @@
 
 import { auth } from './config';
+import { safeStringify } from '../lib/utils';
 
 export enum OperationType {
   CREATE = 'create',
@@ -14,36 +15,41 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
+  timestamp: string;
   authInfo: {
     userId?: string | null;
     email?: string | null;
     emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
   }
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
-        providerId: provider.providerId,
-        email: provider.email,
-      })) || []
-    },
-    operationType,
-    path
+  let errorMessage = 'Unknown error';
+  if (error instanceof Error) {
+    errorMessage = error.message;
+  } else if (typeof error === 'string') {
+    errorMessage = error;
+  } else {
+    try {
+      errorMessage = safeStringify(error);
+    } catch {
+      errorMessage = String(error);
+    }
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  const errInfo: any = {
+    error: errorMessage,
+    operationType,
+    path,
+    timestamp: new Date().toISOString(),
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+      emailVerified: auth.currentUser?.emailVerified || null,
+    }
+  };
+  
+  const jsonStr = safeStringify(errInfo);
+  console.error('Firestore Error:', jsonStr);
+  throw new Error(jsonStr);
 }

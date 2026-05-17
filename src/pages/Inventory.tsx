@@ -7,12 +7,13 @@ import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 import CategoryModal from '../components/CategoryModal';
 import StockInModal from '../components/StockInModal';
 import PurchaseReturnModal from '../components/PurchaseReturnModal';
 import { useCollection } from '../hooks/useCollection';
 import { Product, Category, Supplier } from '../types';
-import { cn, formatCurrency } from '../lib/utils';
+import { cn, formatCurrency, safeStringify } from '../lib/utils';
 import { motion } from 'motion/react';
 import { 
   Plus, 
@@ -40,13 +41,24 @@ const productSchema = z.object({
   name: z.string().min(2, 'Le nom doit avoir au moins 2 caractères'),
   categoryId: z.string().min(1, 'Catégorie requise'),
   barcode: z.string().optional(),
-  purchasePrice: z.number().min(0, 'Prix d\'achat invalide'),
-  sellingPrice: z.number().min(0, 'Prix de vente invalide'),
-  stockQuantity: z.number().min(0, 'La quantité ne peut pas être négative'),
-  minStockLevel: z.number().min(0, 'Le seuil ne peut pas être négatif'),
+  purchasePrice: z.number().min(0, 'Prix requis'),
+  sellingPrice: z.number().min(0, 'Prix requis'),
+  stockQuantity: z.number().min(0, 'Stock requis'),
+  minStockLevel: z.number().min(0, 'Seuil requis'),
   unit: z.enum(['u', 'm', 'ml', 'kg', 'l']).optional(),
   description: z.string().optional(),
-});
+  sellInML: z.boolean().optional(),
+  unitsPerRoll: z.preprocess((val) => {
+    if (val === "" || val === null || val === undefined) return undefined;
+    const n = Number(val);
+    return isNaN(n) ? undefined : n;
+  }, z.number().optional()),
+  pricePerML: z.preprocess((val) => {
+    if (val === "" || val === null || val === undefined) return undefined;
+    const n = Number(val);
+    return isNaN(n) ? undefined : n;
+  }, z.number().optional()),
+}) as z.ZodType<any>;
 
 type ProductFormData = z.infer<typeof productSchema>;
 
@@ -75,13 +87,27 @@ const Inventory: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ProductFormData>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: {
-      minStockLevel: 5
+      minStockLevel: 5,
+      unit: 'u',
+      sellInML: false
     }
   });
+
+  const unitValue = watch('unit');
+  const nameValue = watch('name');
+
+  React.useEffect(() => {
+    if (unitValue === 'ml' || (nameValue && nameValue.toLowerCase().includes('cable'))) {
+       if (!editingProduct) { // Only auto-check for new products
+         setValue('sellInML', true);
+       }
+    }
+  }, [unitValue, nameValue, setValue, editingProduct]);
 
   const onSubmit = async (data: ProductFormData) => {
     try {
@@ -133,6 +159,9 @@ const Inventory: React.FC = () => {
       } else {
         const productData = {
           ...data,
+          // Safety: ensure ML fields are numbers or undefined, never NaN
+          unitsPerRoll: data.sellInML ? (Number(data.unitsPerRoll) || 1) : 0,
+          pricePerML: data.sellInML ? (Number(data.pricePerML) || 0) : 0,
           sku: editingProduct?.sku || `SKU-${data.name.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
           updatedAt: new Date()
         };
@@ -185,7 +214,21 @@ const Inventory: React.FC = () => {
       setEditingProduct(null);
       reset();
     } catch (error: any) {
-      showToast('Erreur lors de l\'enregistrement', 'error');
+      console.error('Inventory submission error:', safeStringify(error));
+      let message = 'Erreur lors de l\'enregistrement';
+      
+      try {
+        const errorData = JSON.parse(error.message);
+        if (errorData.error.includes('permissions')) {
+          message = "Droit d'accès insuffisant pour cette opération.";
+        } else {
+          message = errorData.error || message;
+        }
+      } catch (e) {
+        if (error.message) message = error.message;
+      }
+      
+      showToast(message, 'error');
     }
   };
 
@@ -219,7 +262,7 @@ const Inventory: React.FC = () => {
 
       showToast(`Stock mis à jour (+${delta})`, 'success');
     } catch (error) {
-      console.error("Fast update failed:", error);
+      console.error("Fast update failed:", safeStringify(error));
       showToast('Erreur lors de la mise à jour rapide', 'error');
     } finally {
       setLoading(false);
@@ -274,7 +317,7 @@ const Inventory: React.FC = () => {
       showToast('Produit supprimé avec succès', 'success');
       setProductToDelete(null);
     } catch (error: any) {
-      console.error("Delete failed:", error);
+      console.error("Delete failed:", safeStringify(error));
       const message = error.message?.includes('permission') 
         ? "Action refusée : Vous n'avez pas les droits d'administrateur pour supprimer." 
         : error.message || "Erreur lors de la suppression";
@@ -284,56 +327,56 @@ const Inventory: React.FC = () => {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
-    
-    const confirmMessage = `⚠️ ATTENTION : Voulez-vous vraiment supprimer définitivement les ${selectedIds.length} produits sélectionnés ?\n\nCette action est irréversible.`;
-    
-    if (window.confirm(confirmMessage)) {
-      setLoading(true);
-      try {
-        let successCount = 0;
-        let failCount = 0;
-        
-        for (const id of selectedIds) {
-          const product = products.find(p => p.id === id);
-          if (product) {
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    setLoading(true);
+    try {
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const id of selectedIds) {
+        const product = products.find(p => p.id === id);
+        if (product) {
+          try {
+            // 1. Audit movement
             try {
-              // 1. Audit movement
-              try {
-                await dbService.addDocument('stock_movements', {
-                  productId: product.id,
-                  productName: product.name,
-                  type: 'adjustment_out',
-                  quantity: product.stockQuantity || 0,
-                  previousStock: product.stockQuantity || 0,
-                  newStock: 0,
-                  reason: 'Suppression groupée définitive',
-                  createdAt: new Date(),
-                  userId: user?.uid || auth.currentUser?.uid || 'Unknown',
-                  userName: user?.displayName || auth.currentUser?.displayName || 'Admin'
-                });
-              } catch (auditErr) {
-                console.warn("Failed to audit bulk deletion for product:", product.id);
-              }
-              
-              // 2. Delete
-              await dbService.deleteDocument('products', id);
-              successCount++;
-            } catch (err) {
-              console.error(`Failed to delete product ${id}:`, err);
-              failCount++;
+              await dbService.addDocument('stock_movements', {
+                productId: product.id,
+                productName: product.name,
+                type: 'adjustment_out',
+                quantity: product.stockQuantity || 0,
+                previousStock: product.stockQuantity || 0,
+                newStock: 0,
+                reason: 'Suppression groupée définitive',
+                createdAt: new Date(),
+                userId: user?.uid || auth.currentUser?.uid || 'Unknown',
+                userName: user?.displayName || auth.currentUser?.displayName || 'Admin'
+              });
+            } catch (auditErr) {
+              console.warn("Failed to audit bulk deletion for product:", product.id);
             }
+            
+            // 2. Delete
+            await dbService.deleteDocument('products', id);
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to delete product ${id}:`, safeStringify(err));
+            failCount++;
           }
         }
-        
-        showToast(`${successCount} produits supprimés avec success. ${failCount > 0 ? failCount + ' échecs' : ''}`, successCount > 0 ? 'success' : 'error');
-        setSelectedIds([]);
-      } catch (error: any) {
-        showToast(`Erreur lors de la suppression groupée: ${error.message}`, 'error');
-      } finally {
-        setLoading(false);
       }
+      
+      showToast(`${successCount} produits supprimés avec success. ${failCount > 0 ? failCount + ' échecs' : ''}`, successCount > 0 ? 'success' : 'error');
+      setSelectedIds([]);
+      setIsBulkDeleteModalOpen(false);
+    } catch (error: any) {
+      showToast(`Erreur lors de la suppression groupée: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -538,7 +581,7 @@ const Inventory: React.FC = () => {
       </div>
 
       <div className="overflow-x-auto border border-slate-200 bg-white">
-        <table className="dolisoft-table">
+        <table className="mzsoft-table">
           <thead>
             <tr>
               {canDeleteProducts && (
@@ -620,7 +663,12 @@ const Inventory: React.FC = () => {
                         "font-black text-sm min-w-[2.5rem]",
                         stockStatus === 'out' ? "text-rose-600" : stockStatus === 'low' ? "text-amber-500" : "text-slate-800"
                       )}>
-                        {product.stockQuantity} <span className="text-[10px] text-slate-400 font-normal">{product.unit || 'u'}</span>
+                        {Number(product.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[10px] text-slate-400 font-normal">{product.sellInML ? 'u' : (product.unit || 'u')}</span>
+                        {product.sellInML && (
+                           <p className="text-[9px] text-indigo-500 font-bold block">
+                             ~ {(product.stockQuantity * (product.unitsPerRoll || 0)).toFixed(1)} ml
+                           </p>
+                        )}
                       </span>
 
                       {canManageStock && (
@@ -724,16 +772,65 @@ const Inventory: React.FC = () => {
               </select>
             </div>
 
+            <div className="md:col-span-2 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 flex items-center gap-4">
+              <input 
+                type="checkbox" 
+                id="sellInML" 
+                {...register('sellInML')}
+                className="w-6 h-6 rounded-lg border-blue-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <div>
+                <label htmlFor="sellInML" className="block text-sm font-black text-blue-900 uppercase tracking-tight cursor-pointer">
+                  Vendre au Mètre Linéaire (ML)
+                </label>
+                <p className="text-[10px] font-bold text-blue-600 uppercase">Active la gestion fractionnée pour les câbles, tuyaux, etc.</p>
+              </div>
+            </div>
+
+            {/* Champs ML */}
+            <div className={cn(
+              "md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 transition-all overflow-hidden",
+              watch('sellInML') ? "max-h-96 opacity-100 mb-2" : "max-h-0 opacity-0"
+            )}>
+               <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                 <label className="block text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-2">Conversion (ML par Unité)</label>
+                 <div className="flex items-center gap-2">
+                   <input 
+                     type="number" 
+                     step="0.01" 
+                     {...register('unitsPerRoll')} 
+                     className="w-full px-4 py-2 bg-white rounded-xl border-none outline-none focus:ring-2 focus:ring-indigo-400 font-bold" 
+                     placeholder="Ex: 100"
+                   />
+                   <span className="text-xs font-black text-indigo-400">ML</span>
+                 </div>
+                 <p className="text-[9px] text-indigo-400 font-bold mt-1 uppercase italic">Combien de ML contient une unité entière ?</p>
+               </div>
+               <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                 <label className="block text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-2">Prix de vente au ML (DA)</label>
+                 <input 
+                   type="number" 
+                   step="0.01" 
+                   {...register('pricePerML')} 
+                   className="w-full px-4 py-2 bg-white rounded-xl border-none outline-none focus:ring-2 focus:ring-indigo-400 font-bold" 
+                   placeholder="Ex: 50"
+                 />
+                  <p className="text-[9px] text-indigo-400 font-bold mt-1 uppercase italic">Prix facturé au client pour 1 ML</p>
+               </div>
+            </div>
+
             <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
               <label className="block text-xs font-black uppercase tracking-widest text-slate-500 mb-4">Tarification (DA)</label>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Achat</p>
                   <input type="number" step="0.01" {...register('purchasePrice', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-slate-400 dark:text-white font-bold" />
+                  {errors.purchasePrice && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.purchasePrice.message}</p>}
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Vente</p>
                   <input type="number" step="0.01" {...register('sellingPrice', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-slate-400 dark:text-white font-bold" />
+                  {errors.sellingPrice && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.sellingPrice.message}</p>}
                 </div>
               </div>
             </div>
@@ -744,10 +841,12 @@ const Inventory: React.FC = () => {
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Stock Actuel</p>
                   <input type="number" {...register('stockQuantity', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 dark:text-white font-bold" />
+                  {errors.stockQuantity && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.stockQuantity.message}</p>}
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Seuil Alerte</p>
                   <input type="number" {...register('minStockLevel', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 dark:text-white font-bold" />
+                  {errors.minStockLevel && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.minStockLevel.message}</p>}
                 </div>
               </div>
             </div>
@@ -802,6 +901,17 @@ const Inventory: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      <ConfirmationModal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        onConfirm={confirmBulkDelete}
+        title="Suppression Groupée"
+        message={`Voulez-vous vraiment supprimer définitivement les ${selectedIds.length} produits sélectionnés ? Cette action est irréversible.`}
+        confirmText={`Supprimer (${selectedIds.length})`}
+        variant="danger"
+        isLoading={loading}
+      />
     </div>
   );
 };

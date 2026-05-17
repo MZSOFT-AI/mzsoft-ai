@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ---------------------------------------------------------
+    // GLOBAL HELPERS
+    // ---------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        ('email' in request.auth.token && request.auth.token.email.lower() == 'djelloulmohamed1990@gmail.com') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+      );
+    }
+
+    function isAdmin() { 
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      ); 
+    }
+
+    function hasPermission(perm) {
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[perm] == true)
+      );
+    }
+
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // ---------------------------------------------------------
+    // INVOICES - HARDENED
+    // ---------------------------------------------------------
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['invoiceNumber', 'userId', 'items', 'totalAmount', 'status', 'paymentStatus', 'createdAt'])
+        && data.invoiceNumber is string && data.invoiceNumber.size() <= 64
+        && data.items is list && data.items.size() > 0
+        && data.totalAmount is number && data.totalAmount >= 0
+        && data.status in ['draft', 'validated', 'paid', 'cancelled', 'pending']
+        && data.paymentStatus in ['pending', 'partially_paid', 'paid']
+        && (!data.keys().hasAny(['amountPaid']) || data.amountPaid is number)
+        && (!data.keys().hasAny(['balance']) || data.balance is number)
+        && (!data.keys().hasAny(['customerId']) || (data.customerId is string || data.customerId == null))
+        && (!data.keys().hasAny(['customerName']) || data.customerName is string)
+        && (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is timestamp || data.updatedAt == request.time))
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time));
+    }
+
+    match /invoices/{invoiceId} {
+      allow list: if isSignedIn();
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isValidInvoice(incoming());
+      allow update: if isSignedIn() && isValidInvoice(incoming()) && (
+        isAdmin() || 
+        // Allow partial payment update
+        (incoming().diff(existing()).affectedKeys().hasOnly(['amountPaid', 'balance', 'paymentStatus', 'status', 'paymentHistory', 'updatedAt'])) ||
+        // Allow draft finalization
+        (existing().status == 'draft' && incoming().diff(existing()).affectedKeys().hasAll(['status', 'paymentStatus']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // CUSTOMERS - HARDENED
+    // ---------------------------------------------------------
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['name', 'totalSpent'])
+        && data.name is string && data.name.size() <= 200
+        && data.totalSpent is number
+        && (!data.keys().hasAny(['totalPaid']) || data.totalPaid is number)
+        && (!data.keys().hasAny(['totalDebt']) || data.totalDebt is number)
+        && (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is timestamp || data.updatedAt == request.time))
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time));
+    }
+
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidCustomer(incoming());
+      allow update: if isSignedIn() && isValidCustomer(incoming()) && (
+        isAdmin() ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['totalSpent', 'totalPaid', 'totalDebt', 'updatedAt'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Fallback for other collections... (KEEPING EXISTING ONES)
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('canManageStock') || isAdmin();
+    }
+    match /sales/{saleId} {
+      allow read: if isSignedIn();
+      allow create: if hasPermission('canSell') || isAdmin();
+    }
+    match /stock_movements/{movementId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+    }
+    match /daily_closings/{closingId} {
+      allow read, write: if isSignedIn();
+    }
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /categories/{categoryId} {
+      allow read, write: if isSignedIn();
+    }
+    match /expenses/{expenseId} {
+      allow read, write: if isSignedIn();
+    }
+    match /pending_sales/{saleId} {
+      allow read, write: if isSignedIn();
+    }
+    match /quotes/{quoteId} {
+        allow read, write: if isSignedIn();
+    }
+
+  }
+}

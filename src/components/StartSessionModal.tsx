@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from '../context/SessionContext';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import { Button } from './ui/Button';
-import { Wallet, LogIn, ArrowRight, ArrowLeft, Users } from 'lucide-react';
-import { formatCurrency } from '../lib/utils';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { Wallet, LogIn, ArrowRight, ArrowLeft, Users, Shield, LogOut } from 'lucide-react';
+import { formatCurrency, safeStringify } from '../lib/utils';
+import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import { UserData } from '../types';
@@ -15,7 +16,8 @@ interface StartSessionModalProps {
 
 const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
   const { startSession } = useSession();
-  const { user, userData, isAdmin } = useAuth();
+  const { user, userData, isAdmin, logout } = useAuth();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const [startingCash, setStartingCash] = useState<number>(0);
   const [estimatedStartingCash, setEstimatedStartingCash] = useState<number>(0);
@@ -32,13 +34,11 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
   }, [user, userData]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
+    const fetchEstimatedCash = async () => {
       try {
-        // Fetch last closing for cash suggestion
         const closingsQuery = query(
           collection(db, 'daily_closings'),
-          orderBy('createdAt', 'desc'),
+          orderBy('endTime', 'desc'),
           limit(1)
         );
         const closingsSnapshot = await getDocs(closingsQuery);
@@ -47,28 +47,49 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
           const value = lastClosing.nextSessionCash || 0;
           setEstimatedStartingCash(value);
           setStartingCash(value);
-        }
-
-        // Fetch users if admin
-        if (isAdmin) {
-          const usersSnapshot = await getDocs(query(collection(db, 'users'), orderBy('displayName', 'asc')));
-          setAvailableUsers(usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
+        } else {
+          setEstimatedStartingCash(0);
+          setStartingCash(0);
         }
       } catch (error) {
-        console.error("Error fetching start session data:", error);
-      } finally {
-        setLoading(false);
+        console.warn("Error fetching estimated cash:", error);
       }
     };
 
     if (isOpen) {
-      fetchData();
+      fetchEstimatedCash();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      if (!isAdmin) return;
+      try {
+        const usersSnapshot = await getDocs(query(collection(db, 'users'), orderBy('displayName', 'asc')));
+        setAvailableUsers(usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as UserData)));
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
+    };
+
+    if (isOpen && isAdmin) {
+      fetchUsers();
     }
   }, [isOpen, isAdmin]);
+  
+  // Set initial loading to false once users or estimated cash is fetched
+  useEffect(() => {
+    if (loading && (selectedUserId || !isAdmin)) {
+      setLoading(false);
+    }
+  }, [selectedUserId, isAdmin]);
 
   if (!isOpen) return null;
 
+  const canStart = !settings.lockSessions || isAdmin;
+
   const handleStart = () => {
+    if (!canStart) return;
     const selectedUser = availableUsers.find(u => u.id === selectedUserId);
     startSession(startingCash, selectedUser ? { uid: selectedUser.id, displayName: selectedUser.displayName || 'Vendeur' } : undefined);
   };
@@ -85,6 +106,15 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
         </div>
 
         <div className="p-8 space-y-6">
+          {!canStart && (
+            <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
+              <Shield size={20} className="shrink-0" />
+              <p className="text-[10px] font-black uppercase leading-tight">
+                L'ouverture des sessions est verrouillée. Veuillez contacter un gestionnaire.
+              </p>
+            </div>
+          )}
+
           {isAdmin && availableUsers.length > 0 && (
             <div>
               <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2 flex items-center gap-2">
@@ -133,7 +163,7 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
           <div className="flex flex-col gap-3">
             <Button 
               onClick={handleStart}
-              disabled={loading}
+              disabled={loading || !canStart}
               className="w-full h-16 bg-slate-900 hover:bg-black text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-slate-200 group"
             >
               Démarrer la Session <LogIn size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
@@ -141,10 +171,18 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
             
             <Button
               variant="ghost"
-              onClick={() => navigate('/dashboard')}
-              className="w-full h-12 text-slate-400 hover:text-slate-600 font-bold uppercase tracking-widest text-[10px]"
+              onClick={() => navigate('/')}
+              className="w-full h-10 text-slate-400 hover:text-slate-600 font-bold uppercase tracking-widest text-[10px]"
             >
               <ArrowLeft size={14} className="mr-2" /> Retour au Tableau de Bord
+            </Button>
+
+            <Button
+              variant="ghost"
+              onClick={logout}
+              className="w-full h-10 text-rose-400 hover:text-rose-600 hover:bg-rose-50 font-bold uppercase tracking-widest text-[10px]"
+            >
+              <LogOut size={14} className="mr-2" /> Quitter le Logiciel
             </Button>
           </div>
         </div>

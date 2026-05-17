@@ -13,7 +13,7 @@ import {
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { UserData, UserPermissions } from '../types';
-import { cn } from '../lib/utils';
+import { cn, safeStringify, cleanObject } from '../lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
@@ -84,7 +84,7 @@ const UserManagement: React.FC = () => {
     try {
       const emailId = inviteEmail ? inviteEmail.toLowerCase().trim() : `user_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       
-      const userData: any = {
+      const userData = cleanObject({
         email: inviteEmail || null,
         username: inviteUsername || null,
         displayName: inviteName,
@@ -93,7 +93,7 @@ const UserManagement: React.FC = () => {
         isPreAuthorized: !!inviteEmail,
         isLocalOnly: !inviteEmail,
         permissions: permissions
-      };
+      });
 
       if (!inviteEmail && invitePassword) {
         userData.localPassword = invitePassword; 
@@ -104,7 +104,7 @@ const UserManagement: React.FC = () => {
       showToast(inviteEmail ? 'Utilisateur pré-autorisé avec succès' : 'Utilisateur créé avec succès', 'success');
       resetForm();
     } catch (error) {
-      console.error(error);
+      console.error(safeStringify(error));
       showToast('Erreur lors de la création', 'error');
     } finally {
       setIsInviting(false);
@@ -133,17 +133,17 @@ const UserManagement: React.FC = () => {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
-      await updateDoc(doc(db, 'users', editingUser.id), {
+      await updateDoc(doc(db, 'users', editingUser.id), cleanObject({
         role: inviteRole,
         permissions: permissions,
         displayName: inviteName,
-        username: inviteUsername,
+        username: inviteUsername || null,
         updatedAt: serverTimestamp()
-      });
+      }));
       showToast('Utilisateur mis à jour', 'success');
       resetForm();
     } catch (error) {
-      console.error(error);
+      console.error(safeStringify(error));
       showToast('Erreur lors de la mise à jour', 'error');
     }
   };
@@ -189,7 +189,7 @@ const UserManagement: React.FC = () => {
       });
       showToast('Rôle mis à jour avec succès', 'success');
     } catch (error) {
-      console.error(error);
+      console.error(safeStringify(error));
       showToast('Erreur lors de la mise à jour du rôle', 'error');
     }
   };
@@ -201,7 +201,7 @@ const UserManagement: React.FC = () => {
       await deleteDoc(doc(db, 'users', userId));
       showToast('Utilisateur supprimé', 'success');
     } catch (error) {
-      console.error(error);
+      console.error(safeStringify(error));
       showToast('Erreur lors de la suppression', 'error');
     }
   };

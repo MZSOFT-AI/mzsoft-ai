@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { cleanObject, formatCurrency } from '../lib/utils';
@@ -11,29 +11,57 @@ import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter } 
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Modal from '../components/ui/Modal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
+import PromptModal from '../components/ui/PromptModal';
 import { useNotification } from '../context/NotificationContext';
 
 export default function SalesHistory() {
-  const { user, hasPermission } = useAuth();
+  const { user, userData, isAdmin, hasPermission } = useAuth();
   const { showToast } = useNotification();
   const [sales, setSales] = useState<any[]>([]);
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'pos' | 'invoice'>('all');
   const [isReturning, setIsReturning] = useState(false);
+  const [returnItemModal, setReturnItemModal] = useState<{ sale: any, item: any } | null>(null);
+  const [returnAllModal, setReturnAllModal] = useState<any | null>(null);
+
+  const [showSearchById, setShowSearchById] = useState(false);
+  const [ticketIdQuery, setTicketIdQuery] = useState('');
 
   const canProcessReturns = hasPermission('canProcessReturns');
 
+  const findTicketById = () => {
+    if (!ticketIdQuery.trim()) return;
+    const sale = sales.find(s => s.id.toLowerCase() === ticketIdQuery.toLowerCase().trim());
+    if (sale) {
+      setSelectedSale(sale);
+      setTicketIdQuery('');
+      setShowSearchById(false);
+    } else {
+      showToast("Vente introuvable avec ce numéro", "error");
+    }
+  };
+
   useEffect(() => {
+    const currentUid = user?.uid || userData?.id;
+    if (!currentUid) return;
+
+    const baseQuery = collection(db, 'sales');
+    const q = isAdmin 
+      ? query(baseQuery, orderBy('createdAt', 'desc'), limit(200))
+      : query(baseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'), limit(200));
+
     return onSnapshot(
-      query(collection(db, 'sales'), orderBy('createdAt', 'desc'), limit(200)), 
+      q, 
       (snapshot) => {
         setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'sales')
     );
-  }, []);
+  }, [user, userData, isAdmin]);
 
   useEffect(() => {
     if (selectedSale) {
@@ -42,15 +70,18 @@ export default function SalesHistory() {
     }
   }, [sales]);
 
-  const handleReturnItem = async (sale: any, item: any) => {
+  const handleReturnItem = (sale: any, item: any) => {
     const availableToReturn = item.quantity - (item.returnedQuantity || 0);
     if (availableToReturn <= 0) return;
+    setReturnItemModal({ sale, item });
+  };
 
-    const qtyToReturn = prompt(`Combien d'unités de "${item.name}" voulez-vous retourner ? (Max: ${availableToReturn})`, "1");
-    if (!qtyToReturn) return;
+  const confirmReturnItem = async (quantityStr: string) => {
+    if (!returnItemModal) return;
+    const { sale, item } = returnItemModal;
+    const availableToReturn = item.quantity - (item.returnedQuantity || 0);
     
-    const quantity = parseInt(qtyToReturn);
-
+    const quantity = parseInt(quantityStr);
     if (isNaN(quantity) || quantity <= 0 || quantity > availableToReturn) {
       showToast("Quantité invalide", "error");
       return;
@@ -122,6 +153,7 @@ export default function SalesHistory() {
         });
       });
       showToast("Retour enregistré", "success");
+      setReturnItemModal(null);
     } catch (error: any) {
       showToast(error.message || "Erreur lors du retour", "error");
     } finally {
@@ -129,8 +161,13 @@ export default function SalesHistory() {
     }
   };
 
-  const handleReturnAllItems = async (sale: any) => {
-    if (!window.confirm("Voulez-vous retourner TOUS les articles restants de cette vente ?")) return;
+  const handleReturnAllItems = (sale: any) => {
+    setReturnAllModal(sale);
+  };
+
+  const confirmReturnAll = async () => {
+    const sale = returnAllModal;
+    if (!sale) return;
 
     setIsReturning(true);
     try {
@@ -218,6 +255,7 @@ export default function SalesHistory() {
         });
       });
       showToast("Vente totalement retournée", "success");
+      setReturnAllModal(null);
     } catch (error: any) {
       showToast(error.message || "Erreur lors du retour global", "error");
     } finally {
@@ -257,13 +295,64 @@ export default function SalesHistory() {
       }
     }
 
+    if (sourceFilter !== 'all') {
+      if (sourceFilter === 'pos' && s.source === 'invoice') return false;
+      if (sourceFilter === 'invoice' && s.source !== 'invoice') return false;
+    }
+
     return true;
   });
+
+  const getSafeDate = (dateField: any) => {
+    if (!dateField) return new Date();
+    if (typeof dateField.toDate === 'function') return dateField.toDate();
+    const d = new Date(dateField);
+    return isNaN(d.getTime()) ? new Date() : d;
+  };
+
+  const [expandedDays, setExpandedDays] = useState<string[]>([]);
+
+  // Toggle day expansion
+  const toggleDay = (day: string) => {
+    setExpandedDays(prev => 
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
+
+  const groupedSales = filteredSales.reduce((acc: any, sale) => {
+    const dateObj = getSafeDate(sale.createdAt);
+    const dateKey = format(dateObj, 'yyyy-MM-dd');
+    if (!acc[dateKey]) {
+      acc[dateKey] = {
+        date: dateObj,
+        sales: [],
+        total: 0,
+        count: 0,
+        returns: 0,
+        partiallyReturned: 0
+      };
+    }
+    acc[dateKey].sales.push(sale);
+    acc[dateKey].total += sale.totalAmount;
+    acc[dateKey].count += 1;
+    if (sale.status === 'returned') acc[dateKey].returns += 1;
+    if (sale.status === 'partially_returned') acc[dateKey].partiallyReturned += 1;
+    return acc;
+  }, {});
+
+  const sortedDays = Object.keys(groupedSales).sort((a, b) => b.localeCompare(a));
+
+  // Initialize first day as expanded if there are sales
+  useEffect(() => {
+    if (sortedDays.length > 0 && expandedDays.length === 0) {
+      setExpandedDays([sortedDays[0]]);
+    }
+  }, [sortedDays]);
 
   const handleDownloadInvoice = (sale: any) => {
     pdfService.generateInvoice({
       invoiceNumber: sale.id,
-      date: sale.createdAt?.toDate() || new Date(),
+      date: getSafeDate(sale.createdAt),
       items: sale.items.map((item: any) => ({
         name: item.name,
         quantity: item.quantity,
@@ -290,7 +379,7 @@ export default function SalesHistory() {
     pdfService.generateReturnSlip({
       invoiceNumber: sale.id,
       date: new Date(),
-      originalSaleDate: sale.createdAt?.toDate() || new Date(),
+      originalSaleDate: getSafeDate(sale.createdAt),
       customerName: sale.customerName || 'Client de passage',
       items: sale.items,
       refundAmount: totalRefund,
@@ -308,11 +397,38 @@ export default function SalesHistory() {
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Audit des Ventes & Transactions</p>
         </div>
         <div className="flex gap-2 mt-4 md:mt-0">
+           <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={() => setShowSearchById(true)}>
+             <RotateCcw size={16} className="mr-2" /> Effectuer un Retour
+           </Button>
            <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase" onClick={() => window.location.reload()}>
              <History size={16} className="mr-2 text-slate-400" /> Journal
            </Button>
         </div>
       </div>
+
+      {/* Quick Return Search Modal */}
+      <Modal isOpen={showSearchById} onClose={() => setShowSearchById(false)} title="Rechercher par Bon / Ticket" size="sm">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500 font-medium">Saisissez le numéro du bon ou flashez le code-barre du ticket pour effectuer un retour.</p>
+          <div>
+            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">N° de Bon / ID Vente</label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                value={ticketIdQuery}
+                onChange={(e) => setTicketIdQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && findTicketById()}
+                autoFocus
+                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                placeholder="Ex: sale-123..."
+              />
+            </div>
+          </div>
+          <Button onClick={findTicketById} className="w-full h-12 bg-blue-600 hover:bg-blue-700 font-black uppercase tracking-widest text-xs">
+            Rechercher le document
+          </Button>
+        </div>
+      </Modal>
 
       {/* Filter Bar */}
       <div className="bg-white border border-slate-200 p-4">
@@ -365,96 +481,217 @@ export default function SalesHistory() {
               >
                 Aujourd'hui
               </Button>
+              <div className="flex gap-1 bg-slate-50 border border-slate-300 p-1">
+                <button 
+                  onClick={() => setSourceFilter('all')}
+                  className={cn(
+                    "px-3 py-1 text-[10px] font-black uppercase transition-colors",
+                    sourceFilter === 'all' ? "bg-slate-800 text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  Tous
+                </button>
+                <button 
+                  onClick={() => setSourceFilter('pos')}
+                  className={cn(
+                    "px-3 py-1 text-[10px] font-black uppercase transition-colors",
+                    sourceFilter === 'pos' ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  Caisse
+                </button>
+                <button 
+                  onClick={() => setSourceFilter('invoice')}
+                  className={cn(
+                    "px-3 py-1 text-[10px] font-black uppercase transition-colors",
+                    sourceFilter === 'invoice' ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  Facture
+                </button>
+              </div>
             </div>
           </div>
       </div>
 
-      {/* Main ERP Table */}
-      <div className="overflow-x-auto border border-slate-200 bg-white shadow-sm">
-        <table className="dolisoft-table">
-          <thead>
-            <tr>
-              <th>ID Document</th>
-              <th>Date & Heure</th>
-              <th>Opérateur</th>
-              <th>Client / Partenaire</th>
-              <th className="text-center">Statut</th>
-              <th className="text-right">Montant Total</th>
-              <th className="text-center">Mode</th>
-              <th className="w-20 text-center">...</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSales.map((sale) => (
-              <tr key={sale.id} className="hover:bg-blue-50 transition-colors">
-                <td className="font-mono text-[10px] font-bold text-slate-500">{sale.id}</td>
-                <td className="text-xs">
-                  <span className="font-bold">{format(sale.createdAt?.toDate() || new Date(), 'dd/MM/yyyy')}</span>
-                  <span className="text-slate-400 ml-2 italic">{format(sale.createdAt?.toDate() || new Date(), 'HH:mm')}</span>
-                </td>
-                <td>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 border border-slate-200">{sale.userName || 'Admin'}</span>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200 p-4 shadow-sm">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ventes Totales</p>
+          <p className="text-2xl font-black text-slate-800 tracking-tighter mt-1">{filteredSales.length}</p>
+        </div>
+        <div className="bg-white border border-slate-200 p-4 shadow-sm">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chiffre d'Affaire</p>
+          <p className="text-2xl font-black text-blue-600 tracking-tighter mt-1">
+            {formatCurrency(filteredSales.reduce((sum, s) => sum + s.totalAmount, 0))}
+          </p>
+        </div>
+        <div className="bg-white border border-slate-200 p-4 shadow-sm">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Moyenne / Vente</p>
+          <p className="text-2xl font-black text-slate-800 tracking-tighter mt-1">
+            {filteredSales.length > 0 ? formatCurrency(filteredSales.reduce((sum, s) => sum + s.totalAmount, 0) / filteredSales.length) : '0 DA'}
+          </p>
+        </div>
+        <div className="bg-white border border-rose-100 p-4 shadow-sm bg-rose-50/30">
+          <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Retours / Annulations</p>
+          <p className="text-2xl font-black text-rose-600 tracking-tighter mt-1">
+            {filteredSales.filter(s => s.status === 'returned' || s.status === 'partially_returned').length}
+          </p>
+        </div>
+      </div>
+
+      {/* Daily Grouped View */}
+      <div className="space-y-6">
+        {sortedDays.map((dayKey) => {
+          const dayData = groupedSales[dayKey];
+          const isExpanded = expandedDays.includes(dayKey);
+
+          return (
+            <div key={dayKey} className="bg-white border border-slate-200 overflow-hidden shadow-sm">
+              {/* Day Header */}
+              <div 
+                onClick={() => toggleDay(dayKey)}
+                className="bg-slate-50 p-4 flex flex-col md:flex-row justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors border-b border-slate-200"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-600 text-white p-2">
+                    <Calendar size={18} />
                   </div>
-                </td>
-                <td className="text-xs font-bold text-slate-700">
-                   {sale.customerName || 'Client Anonyme'}
-                </td>
-                <td className="text-center">
-                  {getStatusBadge(sale.status)}
-                </td>
-                <td className="text-right font-black text-slate-900 text-sm">
-                  {formatCurrency(sale.totalAmount)}
-                </td>
-                <td className="text-center uppercase text-[9px] font-black text-slate-400">
-                   {sale.paymentMethod || 'Esp'}
-                </td>
-                <td className="text-center">
-                  <div className="flex justify-center gap-1">
-                    <button onClick={() => handleDownloadInvoice(sale)} className="p-1.5 text-slate-400 hover:text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50" title="Imprimer Ticket">
-                      <Printer size={14} />
-                    </button>
-                    <button onClick={() => setSelectedSale(sale)} className="p-1.5 text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 hover:bg-slate-50" title="Détails / Retour">
-                      <Eye size={14} />
-                    </button>
-                    {sale.status !== 'returned' && (
-                      <button 
-                        onClick={() => {
-                          setSelectedSale(sale);
-                          // We open details so they can choose specific items, 
-                          // but highlighting the return action
-                        }} 
-                        className="p-1.5 text-rose-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50" 
-                        title="Effectuer un Retour"
-                      >
-                        <RotateCcw size={14} />
-                      </button>
-                    )}
+                  <div>
+                    <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter">
+                      {format(dayData.date, 'EEEE dd MMMM yyyy', { locale: fr })}
+                    </h3>
+                    <div className="flex gap-4 mt-0.5">
+                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                         <span className="text-blue-600">{dayData.count}</span> Ventes Effectuées
+                       </span>
+                       {dayData.returns > 0 && (
+                         <span className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">
+                           <span className="text-rose-600">{dayData.returns}</span> Annulations
+                         </span>
+                       )}
+                    </div>
                   </div>
-                </td>
-              </tr>
-            ))}
-            {filteredSales.length === 0 && (
-              <tr>
-                <td colSpan={8} className="text-center py-20 text-slate-400 italic text-sm">Aucune archive disponible</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
+                
+                <div className="flex items-center gap-6 mt-4 md:mt-0">
+                  <div className="text-right">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Journalier</p>
+                    <p className="text-xl font-black text-slate-900 tracking-tighter">{formatCurrency(dayData.total)}</p>
+                  </div>
+                  <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                    <Filter size={16} className="text-slate-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Day Sales Table */}
+              {isExpanded && (
+                <div className="overflow-x-auto">
+                  <table className="mzsoft-table w-full">
+                    <thead>
+                      <tr>
+                        <th className="pl-6">Heure</th>
+                        <th>Type</th>
+                        <th>ID Document</th>
+                        <th>Opérateur</th>
+                        <th>Client</th>
+                        <th className="text-center">Statut</th>
+                        <th className="text-right">Montant</th>
+                        <th className="text-center">Mode</th>
+                        <th className="w-20 pr-6 text-center">...</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayData.sales.map((sale: any) => (
+                        <tr key={sale.id} className="hover:bg-blue-50/50 transition-colors">
+                          <td className="pl-6 text-xs text-slate-400 italic">
+                            {format(getSafeDate(sale.createdAt), 'HH:mm')}
+                          </td>
+                          <td>
+                            {sale.source === 'invoice' ? (
+                              <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 px-1.5 py-0.5 bg-emerald-50 border border-emerald-100 uppercase tracking-tighter w-fit">
+                                <FileText size={10} /> Facture
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-[9px] font-black text-blue-600 px-1.5 py-0.5 bg-blue-50 border border-blue-100 uppercase tracking-tighter w-fit">
+                                <ShoppingCart size={10} /> Caisse
+                              </span>
+                            )}
+                          </td>
+                          <td className="font-mono text-[10px] font-bold text-slate-500">{sale.id}</td>
+                          <td>
+                            <span className="text-[9px] font-black text-slate-600 bg-slate-100 px-2 py-0.5 border border-slate-200 uppercase">
+                              {sale.userName || 'Admin'}
+                            </span>
+                          </td>
+                          <td className="text-xs font-bold text-slate-700">
+                             {sale.customerName || 'Client de passage'}
+                          </td>
+                          <td className="text-center">
+                            {getStatusBadge(sale.status)}
+                          </td>
+                          <td className="text-right font-black text-slate-900 text-sm">
+                            {formatCurrency(sale.totalAmount)}
+                          </td>
+                          <td className="text-center uppercase text-[9px] font-black text-slate-400">
+                             {sale.paymentMethod || 'Esp'}
+                          </td>
+                          <td className="pr-6 text-center">
+                            <div className="flex justify-center gap-1">
+                              <button onClick={() => handleDownloadInvoice(sale)} className="p-1.5 text-slate-400 hover:text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50" title="Imprimer Ticket">
+                                <Printer size={14} />
+                              </button>
+                              <button onClick={() => setSelectedSale(sale)} className="p-1.5 text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 hover:bg-slate-50" title="Détails / Retour">
+                                <Eye size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {sortedDays.length === 0 && (
+          <div className="bg-white border border-slate-200 p-20 text-center flex flex-col items-center gap-4">
+             <div className="bg-slate-50 p-6 rounded-full">
+               <History size={48} className="text-slate-200" />
+             </div>
+             <div className="space-y-1">
+                <p className="text-slate-800 font-black uppercase tracking-tighter">Aucune opération trouvée</p>
+                <p className="text-slate-400 text-xs italic">Affinez vos filtres ou effectuez de nouvelles ventes</p>
+             </div>
+          </div>
+        )}
       </div>
 
       {/* Sale Details Modal */}
       <Modal isOpen={!!selectedSale} onClose={() => setSelectedSale(null)} title="Détail Consultation Document">
         {selectedSale && (
           <div className="space-y-6">
-            <div className="flex justify-between items-start pb-4 border-b border-slate-200">
-               <div>
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Document N°</p>
-                  <p className="font-mono text-sm font-bold">{selectedSale.id}</p>
+             <div className="flex justify-between items-start pb-4 border-b border-slate-200">
+               <div className="flex gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Type</p>
+                    {selectedSale.source === 'invoice' ? (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-100 italic">Facture</span>
+                    ) : (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 italic">Vente Caisse</span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Document N°</p>
+                    <p className="font-mono text-sm font-bold">{selectedSale.id}</p>
+                  </div>
                </div>
                <div className="text-right">
                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Date Émission</p>
-                  <p className="text-sm font-bold">{format(selectedSale.createdAt?.toDate() || new Date(), 'dd/MM/yyyy HH:mm')}</p>
+                  <p className="text-sm font-bold">{format(getSafeDate(selectedSale.createdAt), 'dd/MM/yyyy HH:mm')}</p>
                </div>
             </div>
 
@@ -497,7 +734,7 @@ export default function SalesHistory() {
                             disabled={isReturning}
                             className="mt-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-blue-600 hover:text-blue-800 underline decoration-blue-200 underline-offset-2"
                           >
-                            <RotateCcw size={12} /> Effectuer Retour
+                            <RotateCcw size={12} /> Retour Article Unique
                           </button>
                         )}
                       </div>
@@ -550,6 +787,28 @@ export default function SalesHistory() {
           </div>
         )}
       </Modal>
+
+      <PromptModal
+        isOpen={!!returnItemModal}
+        onClose={() => setReturnItemModal(null)}
+        onConfirm={confirmReturnItem}
+        title="Retour d'article"
+        message={`Combien d'unités de "${returnItemModal?.item?.name}" voulez-vous retourner ? (Max: ${(returnItemModal?.item?.quantity || 0) - (returnItemModal?.item?.returnedQuantity || 0)})`}
+        defaultValue="1"
+        inputType="number"
+        isLoading={isReturning}
+      />
+
+      <ConfirmationModal
+        isOpen={!!returnAllModal}
+        onClose={() => setReturnAllModal(null)}
+        onConfirm={confirmReturnAll}
+        title="Retour Global"
+        message="Voulez-vous vraiment retourner TOUS les articles restants de cette vente ?"
+        confirmText="Confirmer le retour"
+        variant="danger"
+        isLoading={isReturning}
+      />
     </div>
   );
 }

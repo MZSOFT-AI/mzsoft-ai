@@ -81,7 +81,7 @@ export default function Categories() {
 
       {/* ERP Grid of Tables (Simulated as compact list) */}
       <div className="overflow-x-auto border border-slate-200 bg-white shadow-sm">
-        <table className="dolisoft-table">
+        <table className="mzsoft-table">
           <thead>
             <tr>
               <th>Désignation Famille</th>

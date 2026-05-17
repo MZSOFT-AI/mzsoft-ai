@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { orderBy, limit } from 'firebase/firestore';
-import { useCollection } from '../hooks/useCollection';
+import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Sale, Product } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
@@ -36,14 +37,48 @@ import { Button } from '../components/ui/Button';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
-  const { data: sales } = useCollection<Sale>('sales', [orderBy('createdAt', 'desc'), limit(500)]);
-  const { data: products } = useCollection<Product>('products');
-  const { data: customers } = useCollection('customers');
+  const { user, userData, isAdmin, hasPermission } = useAuth();
+  
+  const [sales, setSales] = React.useState<Sale[]>([]);
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [customers, setCustomers] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
   const canViewFinancials = hasPermission('canViewReports');
   const canManageStock = hasPermission('canManageStock');
   const canSell = hasPermission('canSell');
+
+  React.useEffect(() => {
+    const currentUid = user?.uid || userData?.id;
+    if (!currentUid) return;
+
+    // Sales query - only show user's sales if not admin or doesn't have report permission
+    const salesBaseQuery = collection(db, 'sales');
+    const salesQ = (isAdmin || canViewFinancials)
+      ? query(salesBaseQuery, orderBy('createdAt', 'desc'), limit(500))
+      : query(salesBaseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'), limit(500));
+
+    const salesUnsub = onSnapshot(salesQ, (snap) => {
+      setSales(snap.docs.map(d => ({ id: d.id, ...d.data() } as Sale)));
+      setLoading(false);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
+
+    // Products query
+    const productsUnsub = onSnapshot(query(collection(db, 'products')), (snap) => {
+      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
+    });
+
+    // Customers query
+    const customersUnsub = onSnapshot(query(collection(db, 'customers')), (snap) => {
+      setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => {
+      salesUnsub();
+      productsUnsub();
+      customersUnsub();
+    };
+  }, [user, userData, isAdmin, canViewFinancials]);
 
   const statsData = useMemo(() => {
     const totalRevenue = sales.reduce((acc, sale) => acc + (sale.totalAmount || 0), 0);
@@ -89,7 +124,7 @@ const Dashboard: React.FC = () => {
 
     sales.forEach(sale => {
       if (sale.createdAt) {
-        const date = (sale.createdAt as any).toDate ? (sale.createdAt as any).toDate() : new Date(sale.createdAt as any);
+        const date = (sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : (sale.createdAt ? new Date(sale.createdAt as any) : new Date());
         const dayName = format(date, 'eee', { locale: fr });
         if (dailyData[dayName] !== undefined) {
           dailyData[dayName] += (sale.totalAmount || 0);
@@ -114,7 +149,7 @@ const Dashboard: React.FC = () => {
 
     sales.forEach(sale => {
       if (sale.createdAt) {
-        const date = (sale.createdAt as any).toDate ? (sale.createdAt as any).toDate() : new Date(sale.createdAt as any);
+        const date = (sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : (sale.createdAt ? new Date(sale.createdAt as any) : new Date());
         const monthLabel = format(date, 'MMM yy', { locale: fr });
         if (monthlyData[monthLabel] !== undefined) {
           monthlyData[monthLabel] += (sale.totalAmount || 0);
@@ -179,8 +214,8 @@ const Dashboard: React.FC = () => {
                 Total 12m: <span className="text-slate-900">{formatCurrency(monthlyChartData.reduce((acc, d) => acc + d.amount, 0))}</span>
               </div>
             </div>
-            <div className="p-6 h-[400px] w-full relative min-h-[400px]">
-               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <div className="p-6 relative" style={{ height: '400px' }}>
+               <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis 
@@ -218,8 +253,8 @@ const Dashboard: React.FC = () => {
               <TrendingUp size={16} className="text-blue-500" />
               <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">Courbe des Ventes (7 Jours)</span>
             </div>
-            <div className="p-6 h-[400px] w-full relative min-h-[400px]">
-               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <div className="p-6 relative" style={{ height: '400px' }}>
+               <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
@@ -257,7 +292,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-800 truncate">{sale.customerName || 'Client de passage'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">{sale.createdAt ? format((sale.createdAt as any).toDate(), 'HH:mm', { locale: fr }) : '-'}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">{sale.createdAt ? format((sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : new Date(sale.createdAt as any), 'HH:mm', { locale: fr }) : '-'}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-black text-emerald-600">+{formatCurrency(sale.totalAmount)}</p>
@@ -280,7 +315,7 @@ const Dashboard: React.FC = () => {
                <TrendingUp size={14} className="text-blue-500" /> Tops des Ventes
              </span>
            </div>
-           <table className="dolisoft-table">
+           <table className="mzsoft-table">
               <thead>
                 <tr>
                   <th>Produit</th>
@@ -307,7 +342,7 @@ const Dashboard: React.FC = () => {
                <AlertTriangle size={14} /> Alertes Stock Critique
              </span>
            </div>
-           <table className="dolisoft-table">
+           <table className="mzsoft-table">
               <thead>
                 <tr>
                   <th>Produit Désignation</th>

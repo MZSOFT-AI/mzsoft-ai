@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import { Navigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Package, ShieldCheck, Globe, Lock, User as UserIcon, LogIn } from 'lucide-react';
@@ -9,7 +10,8 @@ import { Button } from '../components/ui/Button';
 import { useNotification } from '../context/NotificationContext';
 
 const Login: React.FC = () => {
-  const { signIn, loginLocal, registerFirstAdmin, user, userData, loading, isSigningIn, usersExist } = useAuth();
+  const { signIn, loginLocal, loginAsSeller, registerFirstAdmin, user, userData, loading, isSigningIn, usersExist } = useAuth();
+  const { settings } = useSettings();
   const { showToast } = useNotification();
   
   const [username, setUsername] = useState('');
@@ -19,6 +21,15 @@ const Login: React.FC = () => {
 
   if (loading) return null;
   if (user || userData) return <Navigate to="/" replace />;
+
+  const handleSellerLogin = async () => {
+    try {
+      await loginAsSeller();
+      showToast("Accès vendeur activé", "success");
+    } catch (error: any) {
+      showToast("Erreur lors de la connexion vendeur", "error");
+    }
+  };
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,12 +68,16 @@ const Login: React.FC = () => {
            
            <div className="relative z-10">
               <div className="flex items-center gap-3 mb-8">
-                 <div className="w-12 h-12 bg-blue-600 rounded flex items-center justify-center shadow-xl transform -rotate-3 text-white">
-                    <Package size={28} />
+                 <div className="w-12 h-12 bg-blue-600 rounded flex items-center justify-center shadow-xl transform -rotate-3 text-white overflow-hidden">
+                    {settings.logo ? (
+                       <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                       <Package size={28} />
+                    )}
                  </div>
                  <div>
-                    <h2 className="text-3xl font-black text-white leading-none tracking-tighter uppercase">Doli Soft</h2>
-                    <p className="text-[10px] text-blue-400 font-black uppercase tracking-[0.2em] mt-1">Enterprise Solution</p>
+                    <h2 className="text-3xl font-black text-white leading-none tracking-tighter uppercase">{settings.name}</h2>
+                    <p className="text-[10px] text-blue-400 font-black uppercase tracking-[0.2em] mt-1">{settings.slogan || 'Enterprise Solution'}</p>
                  </div>
               </div>
               <h1 className="text-4xl font-black text-white uppercase tracking-tighter leading-tight mb-6">
@@ -171,9 +186,28 @@ const Login: React.FC = () => {
                   <div className="p-4 bg-blue-50 border border-blue-100 flex items-start gap-3">
                     <Lock className="text-blue-600 mt-1" size={20} />
                     <div>
-                        <p className="text-xs font-black text-blue-800 uppercase tracking-widest mb-1">Connexion Sécurisée</p>
-                        <p className="text-xs text-blue-600 font-medium">Connectez-vous via Google ou utilisez vos identifiants locaux.</p>
+                        <p className="text-xs font-black text-blue-800 uppercase tracking-widest mb-1">Accès Sécurisé</p>
+                        <p className="text-xs text-blue-600 font-medium">Choisissez votre mode de connexion.</p>
                     </div>
+                  </div>
+
+                  <Button 
+                    onClick={handleSellerLogin}
+                    disabled={isSigningIn}
+                    className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded flex items-center justify-center gap-3 font-black uppercase text-sm tracking-widest shadow-lg transition-all active:scale-95"
+                  >
+                    {isSigningIn ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <Package size={20} />
+                    )}
+                    Mode Vendeur (Accès Rapide)
+                  </Button>
+
+                  <div className="flex items-center gap-4 py-1">
+                    <div className="h-px flex-1 bg-slate-100" />
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">OU ADMIN</span>
+                    <div className="h-px flex-1 bg-slate-100" />
                   </div>
 
                   <button
@@ -266,7 +300,7 @@ const Login: React.FC = () => {
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Connectivité stable</span>
                  </div>
-                 <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">© DOLISOFT 2026</p>
+                 <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">© {settings.name} {new Date().getFullYear()}</p>
               </div>
            </div>
         </div>

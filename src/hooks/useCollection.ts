@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
+import { safeStringify } from '../lib/utils';
 
 export function useCollection<T = DocumentData>(
   collectionName: string, 
@@ -32,15 +33,19 @@ export function useCollection<T = DocumentData>(
         setLoading(false);
       },
       (err) => {
-        console.error(`Error fetching collection ${collectionName}:`, err);
+        console.error(`Error fetching collection ${collectionName}:`, safeStringify(err));
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
-        handleFirestoreError(err, OperationType.LIST, collectionName);
+        try {
+          handleFirestoreError(err, OperationType.LIST, collectionName);
+        } catch (e) {
+          console.error("Secondary error in handler:", safeStringify(e));
+        }
       }
     );
 
     return () => unsubscribe();
-  }, [collectionName, JSON.stringify(queryConstraints)]);
+  }, [collectionName]);
 
   return { data, loading, error };
 }

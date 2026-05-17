@@ -1,12 +1,14 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useSettings } from '../../context/SettingsContext';
 import { MENU_ITEMS } from '../../constants';
 import { LogOut, Package, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const Sidebar: React.FC = () => {
   const { logout, user, userData, isAdmin, hasPermission } = useAuth();
+  const { settings } = useSettings();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -15,14 +17,18 @@ const Sidebar: React.FC = () => {
   };
 
   const filteredMenuItems = MENU_ITEMS.filter(item => {
-    if (item.id === 'dashboard') return true;
+    if (item.id === 'dashboard') return isAdmin;
     if (item.id === 'pos') return hasPermission('canSell');
     if (item.id === 'inventory') return hasPermission('canManageStock') || hasPermission('canPerformInventory');
     if (item.id === 'sales-history') return true; // Everyone sees history but can't return without permission
     if (item.id === 'cash-history') return userData?.role === 'admin' || userData?.role === 'manager';
+    if (item.id === 'users') return isAdmin;
+    if (item.id === 'quotes') return true;
+    if (item.id === 'invoices') return hasPermission('canSell');
     if (item.id === 'expenses') return hasPermission('canManageExpenses');
     if (item.id === 'reports') return hasPermission('canViewReports');
     if (item.id === 'settings') return isAdmin;
+    if (item.id === 'returns') return hasPermission('canProcessReturns');
     if (item.id === 'customers') return true;
     if (item.id === 'suppliers') return hasPermission('canManageStock');
     return true;
@@ -33,12 +39,18 @@ const Sidebar: React.FC = () => {
       {/* Brand Header */}
       <div className="p-6 bg-slate-900 border-b border-slate-700">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded flex items-center justify-center shadow-lg transform -rotate-3 group-hover:rotate-0 transition-transform">
-            <Package className="text-white w-6 h-6" />
+          <div className="w-10 h-10 bg-blue-600 rounded flex items-center justify-center shadow-lg transform -rotate-3 group-hover:rotate-0 transition-transform overflow-hidden">
+            {settings.logo ? (
+              <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <Package className="text-white w-6 h-6" />
+            )}
           </div>
-          <div>
-            <span className="font-black text-2xl tracking-tighter block leading-none">MZ SOFT</span>
-            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">ERP & POS SYSTEM</span>
+          <div className="min-w-0">
+            <span className="font-black text-xl tracking-tighter block leading-tight truncate uppercase">{settings.name}</span>
+            <span className="text-[8px] font-bold text-blue-400 uppercase tracking-widest mt-1 block truncate">
+              {settings.slogan || 'ERP & POS SYSTEM'}
+            </span>
           </div>
         </div>
       </div>

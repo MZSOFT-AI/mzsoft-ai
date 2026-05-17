@@ -28,7 +28,10 @@ import {
   DollarSign,
   Settings,
   Wallet,
-  ClipboardList
+  ClipboardList,
+  RotateCcw,
+  ShieldCheck,
+  FileText
 } from 'lucide-react';
 
 export const APP_CONFIG = {
@@ -46,10 +49,14 @@ export const MENU_ITEMS = [
   { id: 'stock-movements', label: 'Historique Stock', path: '/stock-movements', icon: History },
   { id: 'categories', label: 'Catégories', path: '/categories', icon: Tags },
   { id: 'sales-history', label: 'Historique Ventes', path: '/sales-history', icon: History },
+  { id: 'returns', label: 'Retours / Bons', path: '/sales-history', icon: RotateCcw },
   { id: 'customers', label: 'Clients', path: '/customers', icon: Users2 },
   { id: 'suppliers', label: 'Fournisseurs', path: '/suppliers', icon: Truck },
   { id: 'expenses', label: 'Dépenses', path: '/expenses', icon: DollarSign },
   { id: 'cash-history', label: 'Historique Caisse', path: '/cash-history', icon: Wallet },
+  { id: 'users', label: 'Utilisateurs', path: '/users', icon: ShieldCheck },
+  { id: 'quotes', label: 'Devis', path: '/quotes', icon: FileText },
+  { id: 'invoices', label: 'Facturation', path: '/invoices', icon: FileText },
   { id: 'reports', label: 'Rapports', path: '/reports', icon: BarChart2 },
   { id: 'settings', label: 'Paramètres', path: '/settings', icon: Settings },
 ];

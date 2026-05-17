@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { cn, formatCurrency } from '../lib/utils';
+import { cn, formatCurrency, safeStringify } from '../lib/utils';
 import { useNotification } from '../context/NotificationContext';
 
 const InventoryAudits: React.FC = () => {
@@ -76,7 +76,7 @@ const InventoryAudits: React.FC = () => {
       });
       navigate(`/inventory/audits/${docRef.id}`);
     } catch (error) {
-      console.error("Error starting audit:", error);
+      console.error("Error starting audit:", safeStringify(error));
       showToast("Erreur lors de l'initialisation de l'inventaire", "error");
     } finally {
       setIsStarting(false);
@@ -162,7 +162,7 @@ const InventoryAudits: React.FC = () => {
           </h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="dolisoft-table">
+          <table className="mzsoft-table">
             <thead>
               <tr>
                 <th>Type</th>
@@ -214,7 +214,7 @@ const InventoryAudits: React.FC = () => {
                   </td>
                   <td>
                     <span className="text-[11px] font-medium text-slate-500">
-                      {audit.createdAt ? format(audit.createdAt.toDate(), 'dd MMM yyyy HH:mm', { locale: fr }) : '-'}
+                      {audit.createdAt ? format((audit.createdAt as any)?.toDate ? (audit.createdAt as any).toDate() : (audit.createdAt instanceof Date ? audit.createdAt : new Date()), 'dd MMM yyyy HH:mm', { locale: fr }) : '-'}
                     </span>
                   </td>
                   <td className="text-right">

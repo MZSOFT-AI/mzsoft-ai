@@ -6,9 +6,10 @@ service cloud.firestore {
     // ---------------------------------------------------------
     function isSignedIn() { return request.auth != null; }
     function isSuperAdmin() {
-      return isSignedIn() && 
-             ('email' in request.auth.token) && 
-             request.auth.token.email.lower() == 'djelloulmohamed1990@gmail.com';
+      return isSignedIn() && (
+        ('email' in request.auth.token && request.auth.token.email.lower() == 'djelloulmohamed1990@gmail.com') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+      );
     }
 
     function isAdmin() { 
@@ -17,6 +18,18 @@ service cloud.firestore {
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       ); 
     }
+
+    function canManageUsers() {
+      return isSuperAdmin() || (isAdmin() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.canManageUsers == true);
+    }
+
+    function hasPermission(perm) {
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[perm] == true)
+      );
+    }
+
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
@@ -25,48 +38,49 @@ service cloud.firestore {
     // USERS
     // ---------------------------------------------------------
     function isValidPermissions(perms) {
-      return perms.keys().hasAll(['canManageStock', 'canDeleteProducts', 'canSell', 'canProcessReturns', 'canPerformInventory', 'canManageExpenses', 'canViewReports'])
+      return perms.keys().hasAll(['canManageStock', 'canDeleteProducts', 'canSell', 'canProcessReturns', 'canPerformInventory', 'canManageExpenses', 'canViewReports', 'canManageUsers'])
         && perms.canManageStock is bool
         && perms.canDeleteProducts is bool
         && perms.canSell is bool
         && perms.canProcessReturns is bool
         && perms.canPerformInventory is bool
         && perms.canManageExpenses is bool
-        && perms.canViewReports is bool;
+        && perms.canViewReports is bool
+        && perms.canManageUsers is bool;
     }
 
     function isValidUser(data) {
       return data.keys().hasAll(['displayName', 'role'])
         && data.displayName is string && data.displayName.size() <= 128
         && (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 128) || data.email == null)
-        && data.role in ['admin', 'vendeur', 'manager', 'staff']
-        && (!data.keys().hasAny(['createdAt']) || data.createdAt == request.time)
-        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && data.role in ['superadmin', 'admin', 'vendeur', 'manager']
+        && (!data.keys().hasAny(['status']) || data.status in ['active', 'inactive'])
+        && (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is timestamp)
         && (!data.keys().hasAny(['photoURL']) || (data.photoURL is string || data.photoURL == null))
         && (!data.keys().hasAny(['isLocalOnly']) || data.isLocalOnly is bool)
         && (!data.keys().hasAny(['username']) || (data.username is string && data.username.size() <= 64))
         && (!data.keys().hasAny(['localPassword']) || (data.localPassword is string && data.localPassword.size() <= 64))
+        && (!data.keys().hasAny(['uid']) || data.uid is string)
+        && (!data.keys().hasAny(['id']) || data.id is string)
         && (!data.keys().hasAny(['permissions']) || isValidPermissions(data.permissions));
     }
 
     match /users/{userId} {
-      // Allow unauthenticated list only for the "usersExist" check (limit 1)
-      // or for local login (querying by username)
-      allow list: if isSignedIn() || (request.query.limit <= 1);
-      allow get: if isSignedIn() || (resource.data.username != null);
+      allow list: if (request.query.limit <= 1) || isAdmin();
+      allow get: if (isSignedIn() && (request.auth.uid == userId || isAdmin())) || (resource != null && resource.data.username != null);
       
-      // Allow unauthenticated creation of the FIRST admin
-      // In a real prod app, we'd use a metadata doc to lock this permanently
       allow create: if (
-        (isSignedIn() && (isAdmin() || request.auth.uid == userId)) ||
-        (!isSignedIn() && incoming().role == 'admin' && userId.size() > 0)
+        isAdmin() ||
+        (!isSignedIn() && incoming().role == 'superadmin') ||
+        (request.auth.token.provider_id == 'anonymous' && incoming().uid == request.auth.uid)
       ) && isValidUser(incoming());
 
       allow update: if isSignedIn() && (
-        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt', 'localPassword'])) ||
-        isAdmin()
+        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt', 'localPassword', 'uid'])) ||
+        canManageUsers()
       );
-      allow delete: if isAdmin();
+      allow delete: if canManageUsers();
     }
 
     // ---------------------------------------------------------
@@ -88,8 +102,11 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create: if hasPermission('canManageStock');
+      allow update: if hasPermission('canManageStock') || (
+        hasPermission('canSell') && incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'updatedAt'])
+      );
+      allow delete: if hasPermission('canDeleteProducts');
     }
 
     // ---------------------------------------------------------
@@ -101,7 +118,7 @@ service cloud.firestore {
         && data.items is list && data.items.size() > 0
         && data.totalAmount is number && data.totalAmount >= 0
         && data.paymentMethod in ['cash', 'card', 'transfer', 'credit']
-        && data.status in ['completed', 'refunded', 'returned']
+        && data.status in ['completed', 'refunded', 'returned', 'partially_returned']
         && (!data.keys().hasAny(['userName']) || data.userName is string)
         && (!data.keys().hasAny(['customerName']) || data.customerName is string)
         && (!data.keys().hasAny(['customerId']) || (data.customerId is string || data.customerId == null))
@@ -110,11 +127,11 @@ service cloud.firestore {
     }
 
     match /sales/{saleId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidSale(incoming());
-      allow update: if isSignedIn() && (
-        isAdmin() || 
-        (incoming().status in ['refunded', 'returned'] && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'items', 'updatedAt']))
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin() || hasPermission('canViewReports'));
+      allow create: if hasPermission('canSell') && isValidSale(incoming());
+      allow update: if hasPermission('canProcessReturns') || (
+        isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'items', 'updatedAt'])
       );
       allow delete: if isAdmin();
     }
@@ -123,8 +140,11 @@ service cloud.firestore {
     // DAILY CLOSINGS
     // ---------------------------------------------------------
     match /daily_closings/{closingId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow list: if isSignedIn();
+      allow get: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (isAdmin() || existing().userId == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
@@ -147,16 +167,31 @@ service cloud.firestore {
 
     match /pending_sales/{saleId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
-      allow create, update: if isSignedIn() && isValidPendingSale(incoming());
-      allow delete: if isSignedIn();
+      allow create, update: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && isValidPendingSale(incoming());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     // ---------------------------------------------------------
-    // CUSTOMERS
+    // CUSTOMERS - HARDENED
     // ---------------------------------------------------------
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['name', 'totalSpent'])
+        && data.name is string && data.name.size() <= 200
+        && data.totalSpent is number
+        && (!data.keys().hasAny(['totalPaid']) || data.totalPaid is number)
+        && (!data.keys().hasAny(['totalDebt']) || data.totalDebt is number)
+        && (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is timestamp || data.updatedAt == request.time))
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time));
+    }
+
     match /customers/{customerId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow create: if isSignedIn() && isValidCustomer(incoming());
+      allow update: if isSignedIn() && isValidCustomer(incoming()) && (
+        isAdmin() ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['totalSpent', 'totalPaid', 'totalDebt', 'updatedAt'])
+      );
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
@@ -164,7 +199,8 @@ service cloud.firestore {
     // ---------------------------------------------------------
     match /suppliers/{supplierId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow create, update: if hasPermission('canManageStock');
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
@@ -172,16 +208,17 @@ service cloud.firestore {
     // ---------------------------------------------------------
     match /categories/{categoryId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow create, update, delete: if hasPermission('canManageStock');
     }
 
     // ---------------------------------------------------------
     // EXPENSES
     // ---------------------------------------------------------
     match /expenses/{expenseId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn();
+      allow list: if isAdmin() || hasPermission('canViewReports') || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow get: if isAdmin() || hasPermission('canViewReports') || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if hasPermission('canManageExpenses');
+      allow update, delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
@@ -189,20 +226,66 @@ service cloud.firestore {
     // ---------------------------------------------------------
     match /stock_movements/{movementId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow create: if hasPermission('canSell') || hasPermission('canManageStock');
+      allow update, delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
-    // SETTINGS / INVOICES (PLACEHOLDERS)
+    // REPORTS / SETTINGS
     // ---------------------------------------------------------
+    function isValidSettings(data) {
+      return data.keys().hasAll(['name', 'currency', 'currencySymbol'])
+        && data.name is string && data.name.size() <= 128
+        && data.currency is string && data.currency.size() <= 10
+        && data.currencySymbol is string && data.currencySymbol.size() <= 10
+        && (!data.keys().hasAny(['logo']) || data.logo is string)
+        && (!data.keys().hasAny(['slogan']) || data.slogan is string)
+        && (!data.keys().hasAny(['address']) || data.address is string)
+        && (!data.keys().hasAny(['phone']) || data.phone is string)
+        && (!data.keys().hasAny(['email']) || data.email is string)
+        && (!data.keys().hasAny(['nif']) || data.nif is string)
+        && (!data.keys().hasAny(['rc']) || data.rc is string)
+        && (!data.keys().hasAny(['tva']) || data.tva is string)
+        && (!data.keys().hasAny(['footerText']) || data.footerText is string)
+        && (!data.keys().hasAny(['lockSessions']) || data.lockSessions is bool)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time);
+    }
+
     match /settings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if true;
+      allow write: if isAdmin() && isValidSettings(incoming());
+    }
+
+    // ---------------------------------------------------------
+    // INVOICES - HARDENED
+    // ---------------------------------------------------------
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['invoiceNumber', 'userId', 'items', 'totalAmount', 'status', 'paymentStatus', 'createdAt'])
+        && data.invoiceNumber is string && data.invoiceNumber.size() <= 64
+        && data.items is list && data.items.size() > 0
+        && data.totalAmount is number && data.totalAmount >= 0
+        && data.status in ['draft', 'validated', 'paid', 'cancelled', 'pending']
+        && data.paymentStatus in ['pending', 'partially_paid', 'paid']
+        && (!data.keys().hasAny(['amountPaid']) || data.amountPaid is number)
+        && (!data.keys().hasAny(['balance']) || data.balance is number)
+        && (!data.keys().hasAny(['customerId']) || (data.customerId is string || data.customerId == null))
+        && (!data.keys().hasAny(['customerName']) || data.customerName is string)
+        && (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is timestamp || data.updatedAt == request.time))
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time));
     }
 
     match /invoices/{invoiceId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isValidInvoice(incoming());
+      allow update: if isSignedIn() && isValidInvoice(incoming()) && (
+        isAdmin() || 
+        // Action: Record payment
+        (incoming().diff(existing()).affectedKeys().hasOnly(['amountPaid', 'balance', 'paymentStatus', 'status', 'paymentHistory', 'updatedAt'])) ||
+        // Action: Finalize draft
+        (existing().status == 'draft' && incoming().diff(existing()).affectedKeys().hasAll(['status', 'paymentStatus']))
+      );
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
@@ -223,6 +306,44 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn() && isValidInventoryAudit(incoming());
       allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // QUOTES
+    // ---------------------------------------------------------
+    function isValidQuote(data) {
+      return data.keys().hasAll(['quoteNumber', 'userId', 'items', 'totalAmount', 'status', 'createdAt'])
+        && data.quoteNumber is string && data.quoteNumber.size() <= 64
+        && data.userId is string
+        && data.items is list && data.items.size() > 0
+        && data.totalAmount is number && data.totalAmount >= 0
+        && data.status in ['draft', 'sent', 'accepted', 'converted', 'expired']
+        && (!data.keys().hasAny(['userName']) || data.userName is string)
+        && (!data.keys().hasAny(['customerName']) || data.customerName is string)
+        && (!data.keys().hasAny(['customerId']) || (data.customerId is string || data.customerId == null))
+        && (!data.keys().hasAny(['subtotal']) || data.subtotal is number)
+        && (!data.keys().hasAny(['taxAmount']) || data.taxAmount is number)
+        && (!data.keys().hasAny(['taxRate']) || data.taxRate is number)
+        && (!data.keys().hasAny(['discount']) || data.discount is number)
+        && (!data.keys().hasAny(['expiryDate']) || data.expiryDate is timestamp)
+        && (!data.keys().hasAny(['notes']) || data.notes is string)
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time))
+        && (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is timestamp || data.updatedAt == request.time));
+    }
+
+    match /quotes/{quoteId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidQuote(incoming());
+      allow update: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid) && isValidQuote(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid && resource.data.status == 'draft');
+    }
+
+    // ---------------------------------------------------------
+    // SYSTEM LOGS
+    // ---------------------------------------------------------
+    match /system_logs/{logId} {
+      allow create: if isSignedIn();
+      allow read: if isAdmin();
     }
 
   }

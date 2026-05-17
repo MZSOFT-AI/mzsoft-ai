@@ -8,7 +8,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
 }
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md' }) => {
@@ -17,6 +17,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
+    '2xl': 'max-w-6xl',
     full: 'max-w-[95vw]',
   };
 
@@ -45,20 +46,20 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className={cn(
-                "bg-white dark:bg-gray-900 w-full rounded-3xl shadow-2xl overflow-hidden pointer-events-auto border border-gray-100 dark:border-gray-800",
+                "bg-white w-full rounded-3xl shadow-2xl overflow-hidden pointer-events-auto border border-gray-100",
                 sizes[size]
               )}
             >
-              <div className="p-6 border-b border-gray-50 dark:border-gray-800 flex items-center justify-between">
-                <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">{title}</h2>
+              <div className="p-6 border-b border-gray-50 flex items-center justify-between">
+                <h2 className="text-xl font-bold tracking-tight text-gray-900">{title}</h2>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500"
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
                 >
                   <X size={20} />
                 </button>
               </div>
-              <div className="p-6 overflow-y-auto max-h-[80vh]">
+              <div className="p-0 overflow-y-auto max-h-[90vh]">
                 {children}
               </div>
             </motion.div>

@@ -18,16 +18,16 @@ body {
 }
 
 @layer components {
-  .dolisoft-card {
+  .mzsoft-card {
     @apply bg-white border border-slate-200 shadow-sm rounded-none;
   }
-  .dolisoft-table {
+  .mzsoft-table {
     @apply w-full text-left text-sm border-collapse;
   }
-  .dolisoft-table th {
+  .mzsoft-table th {
     @apply bg-slate-100 p-2 border border-slate-200 font-bold uppercase text-[11px] tracking-wider text-slate-600;
   }
-  .dolisoft-table td {
+  .mzsoft-table td {
     @apply p-2 border border-slate-200 bg-white;
   }
 }

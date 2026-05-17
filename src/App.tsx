@@ -5,10 +5,12 @@
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { SessionProvider } from './context/SessionContext';
+import { SettingsProvider } from './context/SettingsContext';
+import { Toaster } from 'react-hot-toast';
 import Layout from './components/layout/Layout';
 
 // Lazy loading pages (for better performance)
@@ -25,6 +27,9 @@ const Expenses = React.lazy(() => import('./pages/Expenses'));
 const Reports = React.lazy(() => import('./pages/Reports'));
 const CashHistory = React.lazy(() => import('./pages/CashHistory'));
 const Settings = React.lazy(() => import('./pages/Settings'));
+const Users = React.lazy(() => import('./pages/Users'));
+const Quotes = React.lazy(() => import('./pages/Quotes'));
+const Invoices = React.lazy(() => import('./pages/Invoices'));
 const InventoryAudits = React.lazy(() => import('./pages/InventoryAudits'));
 const InventoryAuditDetails = React.lazy(() => import('./pages/InventoryAuditDetails'));
 
@@ -36,12 +41,20 @@ const LoadingFallback = () => (
   </div>
 );
 
+const DashboardRedirect = () => {
+  const { userData, isAdmin } = useAuth();
+  if (isAdmin) return <Dashboard />;
+  return <Navigate to="/pos" replace />;
+};
+
 export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <NotificationProvider>
-          <SessionProvider>
+          <SettingsProvider>
+            <SessionProvider>
+            <Toaster position="top-right" reverseOrder={false} />
             <Router>
               <React.Suspense fallback={<LoadingFallback />}>
                 <Routes>
@@ -52,20 +65,23 @@ export default function App() {
                       <Layout />
                     </ProtectedRoute>
                   }>
-                    <Route index element={<Dashboard />} />
+                    <Route index element={<DashboardRedirect />} />
                     <Route path="pos" element={<POS />} />
-                    <Route path="inventory" element={<Inventory />} />
-                    <Route path="inventory/audits" element={<InventoryAudits />} />
-                    <Route path="inventory/audits/:id" element={<InventoryAuditDetails />} />
-                    <Route path="stock-movements" element={<StockMovements />} />
-                    <Route path="categories" element={<Categories />} />
+                    <Route path="inventory" element={<ProtectedRoute requireAdmin><Inventory /></ProtectedRoute>} />
+                    <Route path="inventory/audits" element={<ProtectedRoute requireAdmin><InventoryAudits /></ProtectedRoute>} />
+                    <Route path="inventory/audits/:id" element={<ProtectedRoute requireAdmin><InventoryAuditDetails /></ProtectedRoute>} />
+                    <Route path="stock-movements" element={<ProtectedRoute requireAdmin><StockMovements /></ProtectedRoute>} />
+                    <Route path="categories" element={<ProtectedRoute requireAdmin><Categories /></ProtectedRoute>} />
                     <Route path="sales-history" element={<SalesHistory />} />
                     <Route path="customers" element={<Customers />} />
-                    <Route path="suppliers" element={<Suppliers />} />
-                    <Route path="expenses" element={<Expenses />} />
+                    <Route path="suppliers" element={<ProtectedRoute requireAdmin><Suppliers /></ProtectedRoute>} />
+                    <Route path="expenses" element={<ProtectedRoute requireAdmin><Expenses /></ProtectedRoute>} />
                     <Route path="cash-history" element={<CashHistory />} />
-                    <Route path="reports" element={<Reports />} />
-                    <Route path="settings" element={<Settings />} />
+                    <Route path="reports" element={<ProtectedRoute requireAdmin><Reports /></ProtectedRoute>} />
+                    <Route path="users" element={<ProtectedRoute requireAdmin><Users /></ProtectedRoute>} />
+                    <Route path="quotes" element={<Quotes />} />
+                    <Route path="invoices" element={<Invoices />} />
+                    <Route path="settings" element={<ProtectedRoute requireAdmin><Settings /></ProtectedRoute>} />
                   </Route>
   
                   <Route path="*" element={<Navigate to="/" replace />} />
@@ -73,8 +89,9 @@ export default function App() {
               </React.Suspense>
             </Router>
           </SessionProvider>
-        </NotificationProvider>
-      </AuthProvider>
-    </ThemeProvider>
+        </SettingsProvider>
+      </NotificationProvider>
+    </AuthProvider>
+  </ThemeProvider>
   );
 }

@@ -20,7 +20,10 @@ import {
   SearchX,
   FileText,
   Lock,
-  ArrowLeft
+  ArrowLeft,
+  AlertTriangle,
+  CheckCircle,
+  Clock
 } from 'lucide-react';
 import { format, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -30,6 +33,7 @@ import { useNavigate } from 'react-router-dom';
 import DailyClosingModal from '../components/DailyClosingModal';
 import StartSessionModal from '../components/StartSessionModal';
 import { useSession } from '../context/SessionContext';
+import { useAuth } from '../context/AuthContext';
 
 interface CashSummary {
   date: Date;
@@ -45,7 +49,8 @@ interface CashSummary {
 }
 
 const CashHistory: React.FC = () => {
-  const { activeSession } = useSession();
+  const { activeSession, reopenSession } = useSession();
+  const { user, userData, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [sales, setSales] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -53,15 +58,36 @@ const CashHistory: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [filterIssuesOnly, setFilterIssuesOnly] = useState(false);
   const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     
+    const currentUid = user?.uid || userData?.id;
+    if (!currentUid) return;
+
+    // Filter by user if not admin. If admin, show all for audit/management.
+    const salesBaseQuery = collection(db, 'sales');
+    const expensesBaseQuery = collection(db, 'expenses');
+    const closingsBaseQuery = collection(db, 'daily_closings');
+
+    const salesQ = isAdmin 
+      ? query(salesBaseQuery, orderBy('createdAt', 'desc'))
+      : query(salesBaseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'));
+
+    const expensesQ = isAdmin
+      ? query(expensesBaseQuery, orderBy('createdAt', 'desc'))
+      : query(expensesBaseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'));
+
+    const closingsQ = isAdmin
+      ? query(closingsBaseQuery, orderBy('date', 'desc'))
+      : query(closingsBaseQuery, where('userId', '==', currentUid), orderBy('date', 'desc'));
+
     // Subscribe to sales
     const salesUnsub = onSnapshot(
-      query(collection(db, 'sales'), orderBy('createdAt', 'desc')),
+      salesQ,
       (snapshot) => {
         setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setLoading(false);
@@ -71,7 +97,7 @@ const CashHistory: React.FC = () => {
 
     // Subscribe to expenses
     const expensesUnsub = onSnapshot(
-      query(collection(db, 'expenses'), orderBy('createdAt', 'desc')),
+      expensesQ,
       (snapshot) => {
         setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
@@ -80,7 +106,7 @@ const CashHistory: React.FC = () => {
 
     // Subscribe to closings
     const closingsUnsub = onSnapshot(
-      query(collection(db, 'daily_closings'), orderBy('date', 'desc')),
+      closingsQ,
       (snapshot) => {
         setClosings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
@@ -92,7 +118,7 @@ const CashHistory: React.FC = () => {
       expensesUnsub();
       closingsUnsub();
     };
-  }, []);
+  }, [user, userData, isAdmin]);
 
   const startingCashValue = useMemo(() => {
     // Find the most recent closing before today
@@ -106,7 +132,7 @@ const CashHistory: React.FC = () => {
 
     // Process Sales
     sales.forEach(sale => {
-      const date = sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date(sale.createdAt || Date.now());
+      const date = typeof sale.createdAt?.toDate === 'function' ? sale.createdAt.toDate() : new Date(sale.createdAt || Date.now());
       const dateKey = format(date, 'yyyy-MM-dd');
 
       if (!dailySummaries[dateKey]) {
@@ -137,7 +163,7 @@ const CashHistory: React.FC = () => {
 
     // Process Expenses
     expenses.forEach(exp => {
-      const date = exp.createdAt?.toDate ? exp.createdAt.toDate() : new Date(exp.createdAt || Date.now());
+      const date = typeof exp.createdAt?.toDate === 'function' ? exp.createdAt.toDate() : new Date(exp.createdAt || Date.now());
       const dateKey = format(date, 'yyyy-MM-dd');
 
       if (!dailySummaries[dateKey]) {
@@ -159,25 +185,42 @@ const CashHistory: React.FC = () => {
 
     // Finalize net flow, closing status and filter
     return Object.values(dailySummaries)
-      .map(s => {
+      .flatMap(s => {
         const dateKey = format(s.date, 'yyyy-MM-dd');
+        const dayClosings = closings.filter(c => c.date === dateKey);
+        
+        if (dayClosings.length > 0) {
+          return dayClosings.map(closing => ({
+            ...s,
+            date: closing.startTime?.toDate ? closing.startTime.toDate() : s.date,
+            startingCash: closing.startingCash || 0,
+            cashSales: closing.cashSales || 0,
+            transferSales: closing.transferSales || 0,
+            totalSales: closing.totalSales || 0,
+            expenses: closing.expenses || 0,
+            netFlow: closing.netCash || 0,
+            isClosed: closing.status === 'closed',
+            closingData: closing
+          }));
+        }
+
+        // If no closing doc yet, use the calculated summary for today
         const closing = closings.find(c => c.date === dateKey);
         
         // Find starting cash for this day
-        // It's either explicitly in closing data, or from the previous available closing
         let dayStartingCash = closing?.startingCash;
         if (dayStartingCash === undefined) {
            const prevClosings = closings.filter(c => c.date < dateKey).sort((a, b) => b.date.localeCompare(a.date));
            dayStartingCash = prevClosings.length > 0 ? prevClosings[0].nextSessionCash : 0;
         }
 
-        return {
+        return [{
           ...s,
           startingCash: dayStartingCash || 0,
           netFlow: (dayStartingCash || 0) + s.cashSales - s.expenses,
           isClosed: !!closing,
           closingData: closing
-        };
+        }];
       })
       .filter(s => {
         if (startDate) {
@@ -188,10 +231,13 @@ const CashHistory: React.FC = () => {
           const end = endOfDay(new Date(endDate));
           if (s.date > end) return false;
         }
+        if (filterIssuesOnly && (!s.closingData || (s.closingData.difference || 0) === 0)) {
+          return false;
+        }
         return true;
       })
       .sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [sales, expenses, closings, startDate, endDate]);
+  }, [sales, expenses, closings, startDate, endDate, filterIssuesOnly]);
 
   const todaySummary = useMemo(() => {
     const today = new Date();
@@ -199,15 +245,15 @@ const CashHistory: React.FC = () => {
     
     if (activeSession) {
       // Aggregate data from session start time
-      const sessionStart = activeSession.startTime?.toDate ? activeSession.startTime.toDate() : new Date(activeSession.startTime || Date.now());
+      const sessionStart = typeof activeSession.startTime?.toDate === 'function' ? activeSession.startTime.toDate() : new Date(activeSession.startTime || Date.now());
       
       const sessionSales = sales.filter(s => {
-        const date = s.createdAt?.toDate ? s.createdAt.toDate() : new Date(s.createdAt || Date.now());
+        const date = typeof s.createdAt?.toDate === 'function' ? s.createdAt.toDate() : new Date(s.createdAt || Date.now());
         return s.userId === activeSession.userId && date >= sessionStart && s.status !== 'refunded';
       });
 
       const sessionExpenses = expenses.filter(e => {
-        const date = e.createdAt?.toDate ? e.createdAt.toDate() : new Date(e.createdAt || Date.now());
+        const date = typeof e.createdAt?.toDate === 'function' ? e.createdAt.toDate() : new Date(e.createdAt || Date.now());
         return e.userId === activeSession.userId && date >= sessionStart;
       });
 
@@ -243,6 +289,10 @@ const CashHistory: React.FC = () => {
       isClosed: !!closings.find(c => c.date === todayKey && c.status === 'closed')
     };
   }, [historyData, closings, startingCashValue, activeSession, sales, expenses]);
+
+  const totalDiscrepancies = useMemo(() => {
+    return historyData.reduce((sum, day) => sum + (day.closingData?.difference || 0), 0);
+  }, [historyData]);
 
   return (
     <div className="space-y-6">
@@ -286,7 +336,7 @@ const CashHistory: React.FC = () => {
           <div className="flex items-center gap-3">
             <Button 
               variant="ghost"
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/')}
               className="text-amber-600 hover:bg-amber-100 font-black uppercase text-[10px] tracking-widest h-12 px-8"
             >
                Retour
@@ -307,7 +357,7 @@ const CashHistory: React.FC = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/')}
             className="h-10 w-10 p-0 rounded-full hover:bg-slate-100"
           >
             <ArrowLeft className="text-slate-400" size={20} />
@@ -321,8 +371,20 @@ const CashHistory: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {activeSession && (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setFilterIssuesOnly(!filterIssuesOnly)}
+              className={`h-10 px-4 flex items-center gap-2 font-black uppercase text-[10px] tracking-widest border transition-all ${
+                filterIssuesOnly 
+                ? 'bg-rose-600 text-white border-rose-600 shadow-lg shadow-rose-200' 
+                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <AlertTriangle size={14} />
+              {filterIssuesOnly ? 'Issues Seules' : 'Tous les mouvements'}
+            </button>
+
+            {activeSession && (
             <Button 
               onClick={() => setIsClosingModalOpen(true)}
               className="h-10 px-4 font-black uppercase tracking-widest text-xs bg-slate-900 text-white hover:bg-black transition-all"
@@ -352,6 +414,28 @@ const CashHistory: React.FC = () => {
       </div>
 
 
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <div className="bg-white border border-slate-200 p-6 shadow-sm">
+            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Flux Net Total</span>
+            <p className={`text-2xl font-black mt-1 ${historyData.reduce((sum, d) => sum + d.netFlow, 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {formatCurrency(historyData.reduce((sum, d) => sum + d.netFlow, 0))}
+            </p>
+         </div>
+         <div className="bg-white border border-slate-200 p-6 shadow-sm">
+            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total Dépenses</span>
+            <p className="text-2xl font-black mt-1 text-rose-500">
+              -{formatCurrency(historyData.reduce((sum, d) => sum + d.expenses, 0))}
+            </p>
+         </div>
+         <div className={`p-6 shadow-sm border ${totalDiscrepancies === 0 ? 'bg-white border-slate-200' : 'bg-rose-50 border-rose-100 animate-pulse'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${totalDiscrepancies === 0 ? 'text-slate-400' : 'text-rose-400'}`}>Total des Écarts</span>
+            <p className={`text-2xl font-black mt-1 ${totalDiscrepancies === 0 ? 'text-slate-800' : (totalDiscrepancies > 0 ? 'text-emerald-600' : 'text-rose-600')}`}>
+              {totalDiscrepancies === 0 ? '0 DA' : (totalDiscrepancies > 0 ? `+${formatCurrency(totalDiscrepancies)}` : formatCurrency(totalDiscrepancies))}
+            </p>
+         </div>
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="flex flex-col items-center gap-2">
@@ -371,10 +455,32 @@ const CashHistory: React.FC = () => {
             <div key={day.date.toISOString()} className="bg-white border border-slate-200 shadow-sm overflow-hidden group hover:border-blue-200 transition-all">
               <div className="flex flex-col md:flex-row">
                 {/* Date Side */}
-                <div className="p-6 bg-slate-50 md:w-48 flex flex-col justify-center items-center md:border-r border-slate-200 border-b md:border-b-0">
-                  <span className="text-[10px] font-black uppercase text-slate-400 mb-1">{format(day.date, 'EEEE', { locale: fr })}</span>
+                <div className={`p-6 md:w-56 flex flex-col justify-center items-center md:border-r border-slate-200 border-b md:border-b-0 ${
+                  day.isClosed && day.closingData?.difference !== 0 ? 'bg-rose-50' : 'bg-slate-50'
+                }`}>
+                  <div className="flex items-center gap-1 mb-2">
+                    {day.isClosed ? (
+                       day.closingData?.difference === 0 ? (
+                         <CheckCircle size={14} className="text-emerald-500" />
+                       ) : (
+                         <AlertTriangle size={14} className="text-rose-500" />
+                       )
+                    ) : (
+                      <Clock size={14} className="text-amber-500" />
+                    )}
+                    <span className="text-[10px] font-black uppercase text-slate-400">{format(day.date, 'EEEE', { locale: fr })}</span>
+                  </div>
                   <span className="text-2xl font-black text-slate-800">{format(day.date, 'dd')}</span>
                   <span className="text-xs font-bold text-slate-500 uppercase">{format(day.date, 'MMMM yyyy', { locale: fr })}</span>
+                  
+                  {day.isClosed && (
+                    <div className="mt-4 text-center">
+                      <p className="text-[9px] font-black uppercase text-slate-400 mb-0.5">Opérateur</p>
+                      <p className="text-[10px] font-bold text-slate-600 bg-white px-2 py-1 border border-slate-200">
+                        {day.closingData?.userName || 'Inconnu'}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Data Overview */}
@@ -431,9 +537,59 @@ const CashHistory: React.FC = () => {
                     
                     {day.isClosed && (
                       <div className="mt-2 pt-2 border-t border-slate-200">
-                        <p className="text-[8px] font-black text-slate-400 uppercase">Clôturé par : <span className="text-slate-600">{day.closingData?.closedByName}</span></p>
-                        {day.closingData?.actualCashInDrawer !== undefined && (
-                          <p className="text-[9px] font-bold text-slate-500 mt-0.5">Réel: {formatCurrency(day.closingData.actualCashInDrawer)}</p>
+                        <div className="flex items-center justify-between gap-4">
+                           <div>
+                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Heure</p>
+                              <p className="text-[10px] font-bold text-slate-600">
+                                {day.closingData?.endTime?.toDate ? format(day.closingData.endTime.toDate(), 'HH:mm') : '-'}
+                              </p>
+                           </div>
+                           <div className="text-right flex flex-col items-end">
+                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Par</p>
+                              <p className="text-[10px] font-bold text-slate-600 truncate max-w-[80px]">{day.closingData?.closedByName || '-'}</p>
+                              {isAdmin && day.isClosed && isSameDay(day.date, new Date()) && !activeSession && (
+                                <button 
+                                  onClick={() => reopenSession(day.closingData.id)}
+                                  className="mt-1 text-[8px] font-black text-blue-600 hover:underline uppercase"
+                                >
+                                  Réouvrir
+                                </button>
+                              )}
+                           </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
+                          <div>
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Cash Réel</p>
+                            <p className="text-[11px] font-black text-slate-700">{formatCurrency(day.closingData?.actualCashInDrawer || 0)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Écart</p>
+                            <p className={`text-[11px] font-black ${
+                              (day.closingData?.difference || 0) === 0 ? 'text-emerald-600' : 
+                              (day.closingData?.difference || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'
+                            }`}>
+                              {(day.closingData?.difference || 0) > 0 ? '+' : ''}{formatCurrency(day.closingData?.difference || 0)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 mt-1 px-1">
+                          <div>
+                            <p className="text-[7px] font-black text-slate-400 uppercase tracking-tighter">Retiré</p>
+                            <p className="text-[9px] font-bold text-rose-500">{formatCurrency(day.closingData?.withdrawnAmount || 0)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[7px] font-black text-slate-400 uppercase tracking-tighter">Laissé (Fonds)</p>
+                            <p className="text-[9px] font-bold text-emerald-600">{formatCurrency(day.closingData?.nextSessionCash || 0)}</p>
+                          </div>
+                        </div>
+
+                        {day.closingData?.closingNote && (
+                          <div className="mt-2 p-2 bg-slate-100 border-l-2 border-slate-300">
+                             <p className="text-[7px] font-black text-slate-400 uppercase mb-0.5 tracking-tighter">Note de session</p>
+                             <p className="text-[10px] font-bold text-slate-600 leading-tight italic">"{day.closingData.closingNote}"</p>
+                          </div>
                         )}
                       </div>
                     )}

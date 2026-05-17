@@ -7,6 +7,7 @@ import { doc, onSnapshot, updateDoc, serverTimestamp, arrayUnion, query, collect
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
 import { 
   ArrowLeft, 
   Search, 
@@ -26,7 +27,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { cn, formatCurrency } from '../lib/utils';
+import { cn, formatCurrency, safeStringify } from '../lib/utils';
 import { useNotification } from '../context/NotificationContext';
 import { useCollection } from '../hooks/useCollection';
 import { Product, Category } from '../types';
@@ -54,6 +55,7 @@ const InventoryAuditDetails: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [filterMode, setFilterMode] = useState<'all' | 'counted' | 'uncounted' | 'discrepancy'>('all');
   const [isFinishing, setIsFinishing] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   const { data: products } = useCollection<Product>('products', [orderBy('name')]);
   const { data: categories } = useCollection<Category>('categories', [orderBy('name')]);
@@ -99,25 +101,22 @@ const InventoryAuditDetails: React.FC = () => {
       });
       showToast("Brouillon enregistré", "success");
     } catch (error) {
-      console.error("Error saving draft:", error);
+      console.error("Error saving draft:", safeStringify(error));
       showToast("Erreur lors de l'enregistrement", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCompleteAudit = async () => {
+  const handleCompleteAudit = () => {
+    if (!id || !audit) return;
+    setIsConfirmModalOpen(true);
+  };
+
+  const confirmCompleteAudit = async () => {
     if (!id || !audit) return;
     
-    const uncounted = auditItems.filter(i => !i.isCounted).length;
-    if (uncounted > 0) {
-      if (!window.confirm(`${uncounted} produits ne sont pas encore comptés. Voulez-vous terminer l'inventaire ? (Les produits non comptés seront considérés comme ayant le stock actuel)`)) {
-        return;
-      }
-    } else if (!window.confirm("Voulez-vous clôturer cet inventaire ? Les stocks seront mis à jour en fonction des écarts constatés.")) {
-      return;
-    }
-
+    setIsConfirmModalOpen(false);
     setIsFinishing(true);
     try {
       // Calculate total discrepancy value
@@ -164,7 +163,7 @@ const InventoryAuditDetails: React.FC = () => {
       showToast("Inventaire clôturé avec succès. Stocks mis à jour.", "success");
       navigate('/inventory/audits');
     } catch (error) {
-      console.error("Error completing audit:", error);
+      console.error("Error completing audit:", safeStringify(error));
       showToast("Erreur lors de la clôture de l'inventaire", "error");
     } finally {
       setIsFinishing(false);
@@ -227,7 +226,7 @@ const InventoryAuditDetails: React.FC = () => {
               </h1>
             </div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <User size={10} /> Par {audit.userName} • {format(audit.createdAt.toDate(), 'dd/MM/yyyy HH:mm')}
+              <User size={10} /> Par {audit.userName} • {audit.createdAt ? format((audit.createdAt as any)?.toDate ? (audit.createdAt as any).toDate() : (audit.createdAt instanceof Date ? audit.createdAt : new Date()), 'dd/MM/yyyy HH:mm') : '-'}
             </p>
           </div>
         </div>
@@ -356,7 +355,7 @@ const InventoryAuditDetails: React.FC = () => {
       {/* Audit Table */}
       <div className="bg-white border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="dolisoft-table">
+          <table className="mzsoft-table">
             <thead>
               <tr>
                 <th>Produit</th>
@@ -394,13 +393,13 @@ const InventoryAuditDetails: React.FC = () => {
                       </div>
                     </td>
                     <td className="text-center font-mono text-xs text-slate-500">
-                      {item.theoreticalStock} {item.unit}
+                      {Number(item.theoreticalStock || 0).toFixed(2).replace(/\.00$/, '')} {item.unit === 'ml' ? 'u' : item.unit}
                     </td>
                     <td className="text-center">
                       <div className="inline-flex items-center gap-2">
                         {isCompleted ? (
                            <span className="font-black text-slate-900 border-b-2 border-slate-100 px-2 min-w-[3rem]">
-                             {item.actualStock}
+                             {Number(item.actualStock || 0).toFixed(2).replace(/\.00$/, '')}
                            </span>
                         ) : (
                           <input 
@@ -415,7 +414,7 @@ const InventoryAuditDetails: React.FC = () => {
                             )}
                           />
                         )}
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">{item.unit}</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">{item.unit === 'ml' ? 'u' : item.unit}</span>
                       </div>
                     </td>
                     <td className="text-center">
@@ -496,6 +495,62 @@ const InventoryAuditDetails: React.FC = () => {
            </div>
         </div>
       )}
+      {/* Confirmation Modal */}
+      <Modal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        title="Clôture de l'Inventaire"
+        size="md"
+      >
+        <div className="space-y-6">
+          <div className="flex flex-col items-center text-center py-4">
+            <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+              <AlertTriangle className="text-amber-500" size={40} />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">
+              Confirmation Finale
+            </h3>
+            <p className="text-sm text-slate-500 font-bold leading-relaxed px-4">
+              Voulez-vous clôturer cet inventaire ? Les stocks théoriques seront écrasés par les stocks réels saisis. Cette opération est irréversible.
+            </p>
+          </div>
+
+          {auditItems.filter(i => !i.isCounted).length > 0 && (
+            <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 bg-rose-100 text-rose-600 rounded-lg">
+                  <AlertTriangle size={16} />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-rose-900 uppercase mb-1">Attention : Produits non comptés</p>
+                  <p className="text-[11px] font-bold text-rose-700 leading-tight">
+                    {auditItems.filter(i => !i.isCounted).length} produits n'ont pas encore été comptés.
+                    Ils seront conservés avec leur stock théorique actuel.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2 pt-4">
+            <Button 
+              onClick={confirmCompleteAudit}
+              disabled={isFinishing}
+              className="w-full h-14 bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-black transition-all shadow-xl shadow-slate-200"
+            >
+              {isFinishing ? <RefreshCw className="animate-spin mr-2" size={18} /> : <CheckCircle2 size={18} className="mr-2" />}
+              Confirmer la Clôture
+            </Button>
+            <Button 
+              variant="ghost"
+              onClick={() => setIsConfirmModalOpen(false)}
+              className="w-full h-12 text-xs font-black uppercase tracking-widest text-slate-400 hover:text-slate-600"
+            >
+              Annuler
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

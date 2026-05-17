@@ -17,6 +17,8 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn, cleanObject } from '../lib/utils';
+import PromptModal from '../components/ui/PromptModal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 const STOCK_TYPES: Record<string, { label: string, color: string, text: string }> = {
   initial: { label: 'Stock Initial', color: 'bg-blue-50', text: 'text-blue-600' },
@@ -35,6 +37,8 @@ export default function StockMovements() {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [returnModal, setReturnModal] = useState<any | null>(null);
+  const [confirmReturnModal, setConfirmReturnModal] = useState<{ movement: any, quantity: number } | null>(null);
 
   useEffect(() => {
     return onSnapshot(
@@ -46,19 +50,25 @@ export default function StockMovements() {
     );
   }, []);
 
-  const handleReturnEntry = async (movement: any) => {
+  const handleReturnEntry = (movement: any) => {
     if (movement.type !== 'in') return;
-    
-    const qtyToReturn = prompt(`Quantité à retourner au fournisseur pour "${movement.productName}" ? (Max: ${movement.quantity})`, movement.quantity.toString());
-    if (!qtyToReturn) return;
-    
-    const quantity = parseFloat(qtyToReturn);
-    if (isNaN(quantity) || quantity <= 0 || quantity > movement.quantity) {
+    setReturnModal(movement);
+  };
+
+  const handlePromptConfirm = (qtyStr: string) => {
+    if (!returnModal) return;
+    const quantity = parseFloat(qtyStr);
+    if (isNaN(quantity) || quantity <= 0 || quantity > returnModal.quantity) {
       showToast("Quantité invalide", "error");
       return;
     }
+    setConfirmReturnModal({ movement: returnModal, quantity });
+    setReturnModal(null);
+  };
 
-    if (!window.confirm(`Confirmer le retour de ${quantity} ${movement.unit || 'u'} de "${movement.productName}" au fournisseur ?`)) return;
+  const confirmReturnToSupplier = async () => {
+    if (!confirmReturnModal) return;
+    const { movement, quantity } = confirmReturnModal;
 
     setIsProcessing(true);
     try {
@@ -96,8 +106,7 @@ export default function StockMovements() {
           createdAt: serverTimestamp()
         }));
 
-        // 3. Marquer le mouvement original comme (partiellement) retourné ? 
-        // Optionnel: on pourrait ajouter un champ 'returnedQuantity' aux mouvements
+        // 3. Marquer le mouvement original comme (partiellement) retourné
         const originalMovementRef = doc(db, 'stock_movements', movement.id);
         transaction.update(originalMovementRef, {
           returnedQuantity: increment(quantity)
@@ -105,6 +114,7 @@ export default function StockMovements() {
       });
 
       showToast("Retour fournisseur enregistré avec succès", "success");
+      setConfirmReturnModal(null);
     } catch (error: any) {
       showToast(error.message || "Erreur lors du retour", "error");
     } finally {
@@ -162,7 +172,7 @@ export default function StockMovements() {
 
       {/* ERP Table */}
       <div className="overflow-x-auto border border-slate-200 bg-white shadow-sm">
-        <table className="dolisoft-table">
+        <table className="mzsoft-table">
           <thead>
             <tr>
               <th>Date & Heure</th>
@@ -182,7 +192,7 @@ export default function StockMovements() {
               return (
                 <tr key={m.id} className="hover:bg-slate-50 transition-colors border-l-2 border-l-transparent hover:border-l-blue-500 group">
                   <td className="text-xs font-bold text-slate-400 italic">
-                    {m.createdAt ? format(m.createdAt.toDate(), 'dd/MM HH:mm') : '-'}
+                    {m.createdAt ? format((m.createdAt as any)?.toDate ? (m.createdAt as any).toDate() : (m.createdAt instanceof Date ? m.createdAt : new Date()), 'dd/MM HH:mm') : '-'}
                   </td>
                   <td className="font-bold text-slate-800 text-xs">
                     <div className="flex flex-col">
@@ -206,7 +216,7 @@ export default function StockMovements() {
                     </span>
                   </td>
                   <td className="text-center font-bold text-slate-400 text-xs">
-                    {m.previousStock} <span className="text-[9px] font-normal">{m.unit || 'u'}</span>
+                    {Number(m.previousStock || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[9px] font-normal">u</span>
                   </td>
                   <td className="text-center">
                     <div className={cn(
@@ -214,11 +224,11 @@ export default function StockMovements() {
                       isPositive ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
                     )}>
                       {isPositive ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
-                      {Math.abs(m.quantity)} <span className="text-[9px] font-normal opacity-70 ml-0.5">{m.unit || 'u'}</span>
+                      {Number(Math.abs(m.quantity || 0)).toFixed(2).replace(/\.00$/, '')} <span className="text-[9px] font-normal opacity-70 ml-0.5">{m.unit || 'u'}</span>
                     </div>
                   </td>
                   <td className="text-center font-black text-slate-900 text-xs">
-                    {m.newStock} <span className="text-[9px] font-normal">{m.unit || 'u'}</span>
+                    {Number(m.newStock || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[9px] font-normal">u</span>
                   </td>
                   <td className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase text-slate-400 truncate max-w-[80px]">
@@ -246,6 +256,28 @@ export default function StockMovements() {
           </tbody>
         </table>
       </div>
+
+      <PromptModal
+        isOpen={!!returnModal}
+        onClose={() => setReturnModal(null)}
+        onConfirm={handlePromptConfirm}
+        title="Retour au fournisseur"
+        message={`Quantité à retourner pour "${returnModal?.productName}" ? (Max: ${returnModal?.quantity})`}
+        defaultValue={returnModal?.quantity?.toString()}
+        inputType="number"
+        isLoading={isProcessing}
+      />
+
+      <ConfirmationModal
+        isOpen={!!confirmReturnModal}
+        onClose={() => setConfirmReturnModal(null)}
+        onConfirm={confirmReturnToSupplier}
+        title="Confirmer le retour"
+        message={`Confirmer le retour de ${confirmReturnModal?.quantity} ${confirmReturnModal?.movement?.unit || 'u'} de "${confirmReturnModal?.movement?.productName}" au fournisseur ?`}
+        confirmText="Confirmer le retour"
+        variant="warning"
+        isLoading={isProcessing}
+      />
     </div>
   );
 }

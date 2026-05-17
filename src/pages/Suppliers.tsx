@@ -98,7 +98,7 @@ export default function Suppliers() {
 
       {/* ERP Table */}
       <div className="overflow-x-auto border border-slate-200 bg-white shadow-sm">
-        <table className="dolisoft-table">
+        <table className="mzsoft-table">
           <thead>
             <tr>
               <th>Raison Sociale</th>

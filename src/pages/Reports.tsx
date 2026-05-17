@@ -22,13 +22,17 @@ import { Download, FileText, Table as TableIcon, Calendar, TrendingUp, DollarSig
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const CHART_COLORS = ['#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1', '#e2e8f0'];
 
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 
 export default function Reports() {
   const { user, hasPermission } = useAuth();
+  const { settings } = useSettings();
   const [sales, setSales] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -84,7 +88,8 @@ export default function Reports() {
   // Aggregate sales by date
   const salesByDate = sales.reduce((acc: any[], sale: any) => {
     if (!sale.createdAt) return acc;
-    const date = format(sale.createdAt.toDate(), 'dd/MM', { locale: fr });
+    const dateValue = (sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : (sale.createdAt instanceof Date ? sale.createdAt : new Date());
+    const date = format(dateValue, 'dd/MM', { locale: fr });
     const existing = acc.find(item => item.date === date);
     if (existing) {
       existing.revenue += (sale.totalAmount || 0);
@@ -111,7 +116,7 @@ export default function Reports() {
   const exportToExcel = () => {
     const wsData = sales.map(s => ({
       ID: s.id,
-      Date: s.createdAt?.toDate().toLocaleString(),
+      Date: s.createdAt ? ((s.createdAt as any)?.toDate?.() || new Date(s.createdAt)).toLocaleString() : '-',
       Client: s.customerName || 'Passager',
       Utilisateur: s.userName,
       Montant: s.totalAmount,
@@ -121,6 +126,80 @@ export default function Reports() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Ventes");
     XLSX.writeFile(wb, `Rapport_Ventes_${new Date().toLocaleDateString()}.xlsx`);
+  };
+
+  const handleDownloadReport = () => {
+    // Basic summary for the PDF
+    const data = {
+      totalRevenue,
+      avgTicket: Number(avgTicket),
+      totalStock: products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0),
+      salesCount: sales.length,
+      productsCount: products.length,
+      generatedAt: new Date(),
+      userName: user?.displayName || 'Admin'
+    };
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.text(settings.name || 'RAPPORT D\'ACTIVITÉ', pageWidth / 2, 25, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(settings.slogan || 'Rapport de Gestion Commerciale', pageWidth / 2, 32, { align: 'center' });
+    doc.text(`Généré le: ${format(data.generatedAt, 'dd/MM/yyyy HH:mm')}`, pageWidth / 2, 37, { align: 'center' });
+
+    // KPI Section
+    doc.setFillColor(248, 250, 252);
+    doc.rect(20, 45, pageWidth - 40, 40, 'F');
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text('REVENU TOTAL', 30, 55);
+    doc.text('PANIER MOYEN', pageWidth / 2, 55, { align: 'center' });
+    doc.text('UNITÉS EN STOCK', pageWidth - 30, 55, { align: 'right' });
+
+    doc.setFontSize(16);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${data.totalRevenue.toLocaleString()} ${settings.currencySymbol}`, 30, 65);
+    doc.text(`${data.avgTicket.toLocaleString()} ${settings.currencySymbol}`, pageWidth / 2, 65, { align: 'center' });
+    doc.text(`${data.totalStock.toLocaleString()}`, pageWidth - 30, 65, { align: 'right' });
+
+    // Sales Table
+    const tableData = sales.slice(0, 50).map(s => [
+      s.id.substring(0, 8),
+      s.createdAt ? format((s.createdAt as any)?.toDate ? (s.createdAt as any).toDate() : (s.createdAt instanceof Date ? s.createdAt : new Date()), 'dd/MM HH:mm') : '-',
+      s.customerName || 'Passager',
+      s.paymentMethod === 'cash' ? 'Espèces' : 'Carte',
+      `${(s.totalAmount || 0).toLocaleString()} DA`
+    ]);
+
+    doc.setFontSize(12);
+    doc.text('Historique Récent (50 dernières ventes)', 20, 100);
+
+    autoTable(doc, {
+      startY: 105,
+      head: [['ID', 'Date', 'Client', 'Paiement', 'Montant']],
+      body: tableData,
+      theme: 'striped',
+      headStyles: { fillColor: [51, 65, 85] },
+      styles: { fontSize: 8 }
+    });
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`Émis par ${settings.name} - Opérateur: ${data.userName}`, pageWidth / 2, 285, { align: 'center' });
+
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
   };
 
   const totalRevenue = sales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
@@ -138,7 +217,7 @@ export default function Reports() {
              <TableIcon size={18} className="mr-2" />
              Exporter Excel
            </Button>
-           <Button className="h-10">
+           <Button className="h-10" onClick={handleDownloadReport}>
              <FileText size={18} className="mr-2" />
              Rapport PDF
            </Button>
@@ -187,8 +266,8 @@ export default function Reports() {
           <CardHeader>
             <CardTitle>Revenus par Jour</CardTitle>
           </CardHeader>
-          <CardContent className="h-[350px] w-full min-h-[350px] relative min-w-0">
-             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+          <CardContent className="relative min-w-0" style={{ height: '350px' }}>
+             <ResponsiveContainer width="100%" height="100%">
                <AreaChart data={salesByDate.length > 0 ? salesByDate : [
                  {date: '01/05', revenue: 4000}, {date: '02/05', revenue: 3000}, {date: '03/05', revenue: 5000}
                ]} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -212,8 +291,8 @@ export default function Reports() {
           <CardHeader>
             <CardTitle>Inventaire par Catégorie</CardTitle>
           </CardHeader>
-          <CardContent className="h-[350px] w-full min-h-[350px] relative min-w-0">
-             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+          <CardContent className="relative min-w-0" style={{ height: '350px' }}>
+             <ResponsiveContainer width="100%" height="100%">
                <PieChart>
                  <Pie
                    data={categoryData.length > 0 ? categoryData : [{name: 'Stock', value: 100}]}
@@ -238,8 +317,8 @@ export default function Reports() {
            <CardHeader>
              <CardTitle>Top Produits par Quantité Stockée</CardTitle>
            </CardHeader>
-           <CardContent className="h-[350px] w-full min-h-[350px] relative min-w-0">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+           <CardContent className="relative min-w-0" style={{ height: '350px' }}>
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={products.sort((a,b) => (b.stockQuantity || 0) - (a.stockQuantity || 0)).slice(0, 10)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />

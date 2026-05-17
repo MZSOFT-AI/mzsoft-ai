@@ -9,7 +9,7 @@ import { useForm } from 'react-hook-form';
 import Modal from '../components/ui/Modal';
 import { format } from 'date-fns';
 import { Customer } from '../types';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
 
 import { useNotification } from '../context/NotificationContext';
 
@@ -41,7 +41,9 @@ export default function Customers() {
       } else {
         await dbService.addDocument('customers', {
           ...data,
-          totalSpent: 0
+          totalSpent: 0,
+          totalPaid: 0,
+          totalDebt: 0
         });
         showToast('Client créé', 'success');
       }
@@ -114,29 +116,35 @@ export default function Customers() {
         </div>
       </div>
 
-      {/* Search Bar */}
       <div className="bg-white border border-slate-200 p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Rechercher par nom, téléphone ou code client..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="relative col-span-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Rechercher par nom, téléphone ou code client..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div className="flex items-center justify-center p-2 bg-rose-50 border border-rose-100 rounded">
+               <span className="text-[10px] font-black uppercase text-rose-500 tracking-widest mr-2">Dette Globale:</span>
+               <span className="text-sm font-black text-rose-600">{formatCurrency(customers.reduce((sum, c) => sum + (c.totalDebt || 0), 0))}</span>
+            </div>
           </div>
       </div>
 
       {/* ERP Table */}
       <div className="overflow-x-auto border border-slate-200 bg-white shadow-sm">
-        <table className="dolisoft-table">
+        <table className="mzsoft-table">
           <thead>
             <tr>
               <th>Désignation Client / Société</th>
               <th>Code Client</th>
               <th>Contact (Mobile/Email)</th>
               <th className="text-right">Total Achats</th>
+              <th className="text-right">Dette Actuelle</th>
               <th className="w-20 text-center">...</th>
             </tr>
           </thead>
@@ -172,6 +180,9 @@ export default function Customers() {
                 </td>
                 <td className="text-right font-black text-slate-900">
                   {formatCurrency(client.totalSpent || 0)}
+                </td>
+                <td className={cn("text-right font-black", (client.totalDebt || 0) > 0 ? "text-rose-600" : "text-emerald-600")}>
+                  {formatCurrency(client.totalDebt || 0)}
                 </td>
                 <td className="text-center">
                   <div className="flex justify-center gap-1">

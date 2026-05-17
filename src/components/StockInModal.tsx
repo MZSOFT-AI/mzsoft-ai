@@ -135,7 +135,7 @@ const StockInModal: React.FC<StockInModalProps> = ({ isOpen, onClose, products }
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] uppercase font-black text-slate-300">Stock Actuel</p>
-                    <p className="font-black text-slate-600">{p.stockQuantity} <span className="text-[9px] font-normal">{p.unit || 'u'}</span></p>
+                    <p className="font-black text-slate-600">{Number(p.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[9px] font-normal">{p.sellInML ? 'u' : (p.unit || 'u')}</span></p>
                   </div>
                 </button>
               ))}
@@ -202,12 +202,12 @@ const StockInModal: React.FC<StockInModalProps> = ({ isOpen, onClose, products }
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nouveau Stock</p>
                   <p className="text-xl font-black text-slate-900">
-                    {(Number(selectedProduct.stockQuantity) + (Number(quantityToAdd) || 0)).toFixed(2).replace(/\.00$/, '')} {selectedProduct.unit || 'u'}
+                    {(Number(selectedProduct.stockQuantity) + (Number(quantityToAdd) || 0)).toFixed(2).replace(/\.00$/, '')} {selectedProduct.sellInML ? 'u' : (selectedProduct.unit || 'u')}
                   </p>
-               </div>
+                </div>
                <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-center">
                   <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">PUMP Calculé</p>
                   <p className="text-xl font-black text-emerald-600">

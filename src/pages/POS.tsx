@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../firebase/db';
@@ -7,11 +7,14 @@ import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { useCollection } from '../hooks/useCollection';
 import { useSession } from '../context/SessionContext';
+import { useSettings } from '../context/SettingsContext';
 import { Product, Category, SaleItem, Customer } from '../types';
-import { cn, formatCurrency, cleanObject } from '../lib/utils';
+import { cn, formatCurrency, cleanObject, safeStringify } from '../lib/utils';
 import { useNotification } from '../context/NotificationContext';
 import { Button } from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
+import PromptModal from '../components/ui/PromptModal';
 import { 
   Plus, 
   Minus, 
@@ -39,12 +42,16 @@ import { motion, AnimatePresence } from 'motion/react';
 import { pdfService } from '../services/pdfService';
 import { format } from 'date-fns';
 import StartSessionModal from '../components/StartSessionModal';
+import DailyClosingModal from '../components/DailyClosingModal';
 
 const POS: React.FC = () => {
-  const { user, hasPermission } = useAuth();
-  const { activeSession, loading: sessionLoading } = useSession();
+  const { user, userData, hasPermission } = useAuth();
+  const { activeSession, loading: sessionLoading, updateSessionTotals } = useSession();
+  const { settings } = useSettings();
   const { showToast } = useNotification();
   const navigate = useNavigate();
+
+  const currentUid = user?.uid || userData?.id;
 
   const canSell = hasPermission('canSell');
 
@@ -78,17 +85,20 @@ const POS: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
+  const [mlProductToPrompt, setMlProductToPrompt] = useState<Product | null>(null);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [lastSale, setLastSale] = useState<any>(null);
+  const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
   
-  const { data: pendingSales } = useCollection<any>('pending_sales', user ? [
-    where('userId', '==', activeSession?.userId || user.uid),
+  const { data: pendingSales } = useCollection<any>('pending_sales', currentUid ? [
+    where('userId', '==', activeSession?.userId || currentUid),
     orderBy('createdAt', 'desc')
   ] : []);
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.total, 0), [cart]);
-  const tax = useMemo(() => subtotal * 0, [subtotal]); // Custom tax if needed
-  const total = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount]);
+  const taxRate = useMemo(() => (settings.taxRate || 19) / 100, [settings.taxRate]);
+  const tax = useMemo(() => settings.useTax ? (subtotal - discount) * taxRate : 0, [subtotal, discount, taxRate, settings.useTax]);
+  const total = useMemo(() => Math.max(0, subtotal - discount + tax), [subtotal, discount, tax]);
   const change = useMemo(() => {
     const received = Number(receivedAmount) || 0;
     return received > 0 ? (received - total) : 0;
@@ -106,14 +116,14 @@ const POS: React.FC = () => {
 
   // Redirection logic removed, now we show StartSessionModal
   
-  const handleSuspendSale = async () => {
-    if (cart.length === 0 || isSuspending || !user) return;
+  const handleSuspendSale = useCallback(async () => {
+    if (cart.length === 0 || isSuspending || !currentUid) return;
     
     setIsSuspending(true);
     try {
       await dbService.addDocument('pending_sales', {
-        userId: activeSession?.userId || user.uid,
-        userName: activeSession?.userName || user.displayName || 'Vendeur',
+        userId: activeSession?.userId || currentUid,
+        userName: activeSession?.userName || user?.displayName || userData?.displayName || 'Vendeur',
         customerId: selectedCustomer?.id || null,
         customerName: selectedCustomer?.name || customCustomerName || 'Client de passage',
         items: cart,
@@ -133,13 +143,10 @@ const POS: React.FC = () => {
     } finally {
       setIsSuspending(false);
     }
-  };
+  }, [cart, isSuspending, currentUid, activeSession, user, userData, selectedCustomer, customCustomerName, discount, subtotal, total, showToast]);
 
-  const recallPendingSale = async (pending: any) => {
-    if (cart.length > 0 && !window.confirm("Le panier actuel sera remplacé par la vente en instance. Continuer ?")) {
-      return;
-    }
-    
+  const confirmRecall = useCallback(async (pending: any) => {
+    if (!pending) return;
     setCart(pending.items || []);
     setDiscount(pending.discount || 0);
     if (pending.customerId) {
@@ -153,8 +160,17 @@ const POS: React.FC = () => {
     
     // Delete from pending after recall
     await dbService.deleteDocument('pending_sales', pending.id);
+    setPendingToRecall(null);
     setShowPendingModal(false);
     showToast("Vente récupérée", "success");
+  }, [customers, showToast]);
+
+  const recallPendingSale = (pending: any) => {
+    if (cart.length > 0) {
+      setPendingToRecall(pending);
+    } else {
+      confirmRecall(pending);
+    }
   };
 
   const filteredProducts = useMemo(() => {
@@ -170,78 +186,124 @@ const POS: React.FC = () => {
     });
   }, [products, searchQuery, selectedCategory]);
 
-  const addToCart = (product: Product) => {
+  const addToCart = useCallback((product: Product, quantity: number = 1, isML: boolean = false, mlLength: number = 0) => {
     const stock = Number(product.stockQuantity) || 0;
+    
     if (stock <= 0) {
       showToast(`${product.name} est en rupture de stock`, 'error');
       return;
     }
 
-    const existingItem = cart.find(item => item.id === product.id);
-    if (existingItem && existingItem.quantity >= stock) {
-      showToast(`Stock limité à ${stock} pour ${product.name}`, 'warning');
+    if (product.sellInML && !isML) {
+      setMlProductToPrompt(product);
+      return;
+    }
+
+    const qtyToAdd = isML ? mlLength : quantity;
+    const priceToUse = isML ? (product.pricePerML || product.sellingPrice / (product.unitsPerRoll || 1)) : product.sellingPrice;
+    const unitToUse = isML ? 'ml' : (product.unit || 'u');
+
+    // Find existing item in cart to validate stock properly
+    const existingItem = cart.find(item => item.id === product.id && item.unit === unitToUse);
+    const currentQtyInCart = existingItem ? existingItem.quantity : 0;
+    const totalQtyAfterAdd = currentQtyInCart + qtyToAdd;
+
+    // Validation stock
+    const totalUnitsNeeded = isML ? totalQtyAfterAdd / (product.unitsPerRoll || 1) : totalQtyAfterAdd;
+    if (totalUnitsNeeded > stock) {
+      showToast(`Stock limité pour ${product.name}`, 'warning');
       return;
     }
 
     setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
+      const existing = prev.find(item => item.id === product.id && item.unit === unitToUse);
       if (existing) {
         return prev.map(item => 
-          item.id === product.id 
-            ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.price } 
+          (item.id === product.id && item.unit === unitToUse)
+            ? { ...item, quantity: totalQtyAfterAdd, total: totalQtyAfterAdd * item.price } 
             : item
         );
       }
+      
       return [...prev, { 
         id: product.id, 
         name: product.name, 
-        price: product.sellingPrice, 
-        quantity: 1, 
-        unit: product.unit || 'u',
-        total: product.sellingPrice
+        price: priceToUse, 
+        quantity: qtyToAdd, 
+        unit: unitToUse,
+        total: qtyToAdd * priceToUse
       }];
     });
-  };
 
-  const updateQuantity = (id: string, delta: number) => {
+    if (isML) setMlProductToPrompt(null);
+  }, [cart, showToast]);
+
+  const updateQuantity = useCallback((id: string, delta: number, unit: string = 'u') => {
     const product = products.find(p => p.id === id);
     if (!product) return;
     const stock = Number(product.stockQuantity) || 0;
 
-    const item = cart.find(i => i.id === id);
-    if (item && delta > 0 && item.quantity + delta > stock) {
+    const item = cart.find(i => i.id === id && i.unit === unit);
+    if (!item) return;
+
+    const newQty = item.quantity + delta;
+    if (newQty <= 0) return;
+
+    // Validation stock avec conversion
+    const unitsNeeded = unit === 'ml' ? newQty / (product.unitsPerRoll || 1) : newQty;
+    if (delta > 0 && unitsNeeded > stock) {
       showToast(`Stock limité pour ${item.name}`, 'warning');
       return;
     }
 
-    setCart(prev => prev.map(item => {
-      if (item.id === id) {
-        const newQty = item.quantity + delta;
-        if (newQty <= 0) return item;
-        return { ...item, quantity: newQty, total: newQty * item.price };
+    setCart(prev => prev.map(i => {
+      if (i.id === id && i.unit === unit) {
+        return { ...i, quantity: newQty, total: Number((newQty * i.price).toFixed(2)) };
       }
-      return item;
-    }).filter(item => item.quantity > 0));
-  };
+      return i;
+    }));
+  }, [products, cart, showToast]);
 
   const removeFromCart = (id: string) => {
     setCart(prev => prev.filter(item => item.id !== id));
   };
 
   const [isDeletingPending, setIsDeletingPending] = useState<string | null>(null);
+  const [pendingToRecall, setPendingToRecall] = useState<any | null>(null);
+  const [pendingToDelete, setPendingToDelete] = useState<any | null>(null);
 
-  const toggleUnit = (id: string) => {
+  const toggleUnit = (id: string, currentUnit: string) => {
+    const product = products.find(p => p.id === id);
+    if (!product || !product.sellInML) return;
+
     setCart(prev => prev.map(item => {
-      if (item.id === id) {
-        const nextUnit = item.unit === 'u' ? 'ml' : item.unit === 'ml' ? 'u' : item.unit;
-        return { ...item, unit: nextUnit };
+      if (item.id === id && item.unit === currentUnit) {
+        const isSwitchingToML = currentUnit === 'u';
+        const nextUnit = isSwitchingToML ? 'ml' : 'u';
+        
+        // Conversion de prix et quantité
+        let nextPrice = isSwitchingToML 
+          ? (product.pricePerML || product.sellingPrice / (product.unitsPerRoll || 1)) 
+          : product.sellingPrice;
+        
+        let nextQty = isSwitchingToML 
+          ? item.quantity * (product.unitsPerRoll || 1) 
+          : Math.ceil(item.quantity / (product.unitsPerRoll || 1));
+
+        return { 
+          ...item, 
+          unit: nextUnit, 
+          price: nextPrice, 
+          quantity: nextQty,
+          total: Number((nextQty * nextPrice).toFixed(2))
+        };
       }
       return item;
     }));
   };
 
-  const handleSale = async () => {
-    if (cart.length === 0 || isProcessing || !user) return;
+  const handleSale = useCallback(async () => {
+    if (cart.length === 0 || isProcessing || !currentUid) return;
 
     setIsProcessing(true);
     const saleId = `SALE-${Date.now()}`;
@@ -256,19 +318,29 @@ const POS: React.FC = () => {
           
           if (!productSnap.exists()) throw new Error(`Le produit ${item.name} n'existe plus.`);
           
-          const currentStock = Number(productSnap.data().stockQuantity) || 0;
-          if (currentStock < item.quantity) {
-            throw new Error(`Stock insuffisant pour ${item.name}. Disponible: ${currentStock}`);
+          const productData = productSnap.data() as Product;
+          const currentStock = Number(productData.stockQuantity) || 0;
+          
+          let deductionNeeded = item.quantity;
+          if (productData.sellInML && item.unit === 'ml') {
+            deductionNeeded = item.quantity / (productData.unitsPerRoll || 1);
           }
-          productSnapshots[item.id] = currentStock;
+          
+          if (currentStock < deductionNeeded) {
+            throw new Error(`Stock insuffisant pour ${item.name}. Disponible: ${currentStock.toFixed(2)} rolls`);
+          }
+          productSnapshots[item.id] = { currentStock, productData };
         }
 
         const saleRef = doc(collection(db, 'sales'), saleId);
+        const invoiceRef = doc(collection(db, 'invoices'), saleId); // Use same ID for consistency
         const finalCustomerName = selectedCustomer ? selectedCustomer.name : (customCustomerName || 'Client de passage');
+        const amountReceived = Number(receivedAmount) || total;
+        const balanceRemaining = Math.max(0, total - amountReceived);
         
         const saleData = {
-          userId: activeSession?.userId || user.uid,
-          userName: activeSession?.userName || user.displayName || user.email?.split('@')[0] || 'Vendeur',
+          userId: activeSession?.userId || currentUid,
+          userName: activeSession?.userName || user?.displayName || userData?.displayName || user?.email?.split('@')[0] || 'Vendeur',
           customerId: selectedCustomer?.id || null,
           customerName: finalCustomerName,
           items: cart.map(item => ({
@@ -279,32 +351,89 @@ const POS: React.FC = () => {
             total: item.price * item.quantity
           })),
           subtotal,
+          taxAmount: tax,
+          taxRate: settings.useTax ? taxRate : 0,
           discount,
           totalAmount: total,
-          receivedAmount: Number(receivedAmount) || total,
+          receivedAmount: amountReceived,
           change: change > 0 ? change : 0,
           paymentMethod,
           status: 'completed' as const,
+          source: 'pos',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
         
         transaction.set(saleRef, cleanObject(saleData));
 
+        // Create Invoice Record for history and debt
+        const invoiceData = {
+          invoiceNumber: saleId,
+          items: cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price, total: item.price * item.quantity })),
+          subtotal,
+          taxAmount: tax,
+          taxRate: settings.useTax ? taxRate : 0,
+          discount,
+          totalAmount: total,
+          amountPaid: amountReceived - (change > 0 ? change : 0),
+          balance: balanceRemaining,
+          customerName: finalCustomerName,
+          customerId: selectedCustomer?.id || undefined,
+          userId: currentUid,
+          userName: saleData.userName,
+          status: balanceRemaining > 0 ? 'pending' : 'paid',
+          paymentMethod,
+          paymentStatus: balanceRemaining > 0 ? (amountReceived > 0 ? 'partially_paid' : 'pending') : 'paid',
+          paymentHistory: amountReceived > 0 ? [{
+            amount: amountReceived - (change > 0 ? change : 0),
+            date: new Date(),
+            method: paymentMethod,
+            userId: currentUid,
+            userName: saleData.userName
+          }] : [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        transaction.set(invoiceRef, cleanObject(invoiceData));
+
+        // Direct flux calculation: Update active session totals if it exists
+        if (activeSession) {
+          const sessionRef = doc(db, 'daily_closings', activeSession.id);
+          const isCash = paymentMethod === 'cash';
+          const effectivePayment = amountReceived - (change > 0 ? change : 0);
+          transaction.update(sessionRef, {
+            cashSales: increment(isCash ? effectivePayment : 0),
+            transferSales: increment(!isCash ? effectivePayment : 0),
+            totalSales: increment(effectivePayment),
+            salesCount: increment(1),
+            netCash: increment(isCash ? effectivePayment : 0),
+            updatedAt: serverTimestamp()
+          });
+        }
+
         if (selectedCustomer) {
           const customerRef = doc(db, 'customers', selectedCustomer.id);
+          const effectivePayment = amountReceived - (change > 0 ? change : 0);
           transaction.update(customerRef, {
             totalSpent: increment(total),
+            totalPaid: increment(effectivePayment),
+            totalDebt: increment(total - effectivePayment),
             updatedAt: serverTimestamp()
           });
         }
 
         for (const item of cart) {
           const productRef = doc(db, 'products', item.id);
-          const currentStock = productSnapshots[item.id];
+          const { currentStock, productData } = productSnapshots[item.id];
+
+          let deduction = item.quantity;
+          if (productData.sellInML && item.unit === 'ml') {
+            deduction = item.quantity / (productData.unitsPerRoll || 1);
+          }
 
           transaction.update(productRef, {
-            stockQuantity: increment(-item.quantity),
+            stockQuantity: increment(-deduction),
             updatedAt: serverTimestamp()
           });
 
@@ -316,11 +445,11 @@ const POS: React.FC = () => {
             quantity: item.quantity,
             unit: item.unit || 'u',
             previousStock: currentStock,
-            newStock: currentStock - item.quantity,
+            newStock: currentStock - deduction,
             reason: `Vente ${saleId}`,
             referenceId: saleId,
-            userId: user.uid,
-            userName: user.displayName || 'Vendeur',
+            userId: currentUid,
+            userName: user?.displayName || userData?.displayName || 'Vendeur',
             createdAt: serverTimestamp()
           }));
         }
@@ -332,11 +461,15 @@ const POS: React.FC = () => {
         items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.price })),
         customerId: selectedCustomer?.id,
         customerName: selectedCustomer ? selectedCustomer.name : (customCustomerName || 'Client de passage'),
+        subtotal,
+        taxAmount: tax,
+        taxRate: settings.useTax ? taxRate : 0,
+        discount,
         totalAmount: total,
         receivedAmount: Number(receivedAmount) || total,
         change: change > 0 ? change : 0,
         paymentMethod,
-        userName: user.displayName || 'Admin'
+        userName: user?.displayName || userData?.displayName || 'Admin'
       };
       
       setLastSale(saleDataForInvoice);
@@ -354,7 +487,7 @@ const POS: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [cart, isProcessing, currentUid, activeSession, user, userData, selectedCustomer, customCustomerName, subtotal, discount, total, receivedAmount, change, paymentMethod, showToast]);
 
   const handleNumpadClick = (val: string) => {
     if (val === 'C') {
@@ -374,37 +507,107 @@ const POS: React.FC = () => {
     totalRef.current = total;
   }, [cart, selectedCustomer, customCustomerName, discount, subtotal, total]);
 
-  // Keyboard accessibility
+  const scannerBuffer = useRef<string>('');
+  const lastScanTime = useRef<number>(0);
+
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    if (!barcode) return;
+    
+    const product = products.find(p => 
+      p.barcode?.toLowerCase() === barcode.toLowerCase() || 
+      p.sku?.toLowerCase() === barcode.toLowerCase()
+    );
+
+    if (product) {
+      addToCart(product);
+      showToast(`Produit ajouté: ${product.name}`, 'success');
+      return true;
+    }
+    return false;
+  }, [products, addToCart, showToast]);
+
+  // Keyboard accessibility & Barcode Scanner support
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F9') { // Shortcut for sale
+      // Shortcut for sale
+      if (e.key === 'F9') { 
+        e.preventDefault();
         handleSale();
+        return;
       }
-      if (e.key === 'F2') { // Shortcut for clear
+      
+      // Shortcut for clear
+      if (e.key === 'F2') { 
+        e.preventDefault();
         setCart([]);
+        return;
       }
-      if (e.key === 'F4') { // Shortcut for Pending
+      
+      // Shortcut for Pending
+      if (e.key === 'F4') { 
+        e.preventDefault();
         handleSuspendSale();
+        return;
+      }
+
+      // Barcode Scanner Logic
+      // Check if user is typing in an input field (except the main search)
+      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      
+      if (e.key === 'Enter') {
+        if (scannerBuffer.current.length > 2) {
+          const processed = handleBarcodeScan(scannerBuffer.current);
+          if (processed) {
+            scannerBuffer.current = '';
+            // If the search input was focused, clear it
+            if (isInput) {
+              (e.target as HTMLInputElement).value = '';
+              setSearchQuery('');
+            }
+            return;
+          }
+        }
+        scannerBuffer.current = '';
+        return;
+      }
+
+      // Only capture alphanumeric characters if not in an input
+      // OR capture everything if it's coming in fast (scanner)
+      const now = Date.now();
+      const isFast = now - lastScanTime.current < 50; // Scanners are very fast
+      lastScanTime.current = now;
+
+      if (!isInput || isFast) {
+        if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+          scannerBuffer.current += e.key;
+          
+          // Optional: clear buffer if it gets too long or too old
+          setTimeout(() => {
+            if (Date.now() - lastScanTime.current > 500) {
+              scannerBuffer.current = '';
+            }
+          }, 600);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, isProcessing, selectedCustomer, customCustomerName, discount, subtotal, total, handleSale, handleSuspendSale]); // Added dependencies for safety
+  }, [handleSale, handleSuspendSale, handleBarcodeScan]);
 
   // Auto-save on unmount
   useEffect(() => {
     return () => {
       // If there are items in the cart and we're navigating away (unmounting)
       // we save it automatically to avoid data loss
-      if (cartRef.current.length > 0 && user?.uid) {
+      if (cartRef.current.length > 0 && currentUid) {
         // Create a copy of values at unmount time
         const cartToSave = [...cartRef.current];
         const customerToSave = customerRef.current;
         const discountToSave = discountRef.current;
         const subtotalToSave = subtotalRef.current;
         const totalToSave = totalRef.current;
-        const userId = user.uid;
-        const userName = user.displayName || 'Vendeur';
+        const userId = currentUid;
+        const userName = user?.displayName || userData?.displayName || 'Vendeur';
 
         // Direct call to Firestore without waiting (fire and forget)
         dbService.addDocument('pending_sales', {
@@ -418,21 +621,39 @@ const POS: React.FC = () => {
           totalAmount: totalToSave,
           createdAt: new Date(), // Using new Date() for reliability in cleanup
           isAutoSave: true
-        }).catch(err => console.error("POS Auto-save failed:", err));
+        }).catch(err => console.error("POS Auto-save failed:", safeStringify(err)));
       }
     };
-  }, [user?.uid]);
+  }, [currentUid]);
 
   return (
     <div className="flex h-[calc(100vh-64px)] bg-slate-100 overflow-hidden font-sans">
       <StartSessionModal isOpen={!sessionLoading && !activeSession} />
+      
+      {activeSession && (
+        <DailyClosingModal 
+          isOpen={isClosingModalOpen}
+          onClose={() => setIsClosingModalOpen(false)}
+          todaySummary={{
+            date: activeSession.startTime?.toDate ? activeSession.startTime.toDate() : new Date(),
+            startingCash: activeSession.startingCash || 0,
+            cashSales: activeSession.cashSales || 0,
+            transferSales: activeSession.transferSales || 0,
+            totalSales: activeSession.totalSales || 0,
+            expenses: activeSession.expenses || 0,
+            netFlow: activeSession.netCash || 0,
+            salesCount: activeSession.salesCount || 0
+          }}
+        />
+      )}
+
       {/* Categories Sidebar */}
       <div className="w-64 bg-slate-200 border-r border-slate-300 flex flex-col hidden lg:flex">
         <div className="p-4 bg-slate-800 text-white flex items-center gap-4">
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/')}
             className="h-8 w-8 p-0 rounded-full hover:bg-slate-700 text-white"
           >
             <ArrowLeft size={16} />
@@ -490,6 +711,10 @@ const POS: React.FC = () => {
               />
             </div>
             <div className="flex gap-2">
+              <div className="flex items-center px-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-[10px] font-black uppercase tracking-tighter">
+                <Zap size={14} className="mr-1 text-amber-500 animate-pulse" />
+                Scanner Actif
+              </div>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -521,13 +746,22 @@ const POS: React.FC = () => {
               <Button variant="outline" size="sm" onClick={() => setCart([])} className="text-xs h-9">
                 <RefreshCw size={16} className="mr-1" /> Vider
               </Button>
+              {activeSession && (
+                <Button 
+                  size="sm" 
+                  onClick={() => setIsClosingModalOpen(true)} 
+                  className="text-xs h-9 bg-slate-900 hover:bg-black text-white px-4 border-none font-black uppercase tracking-widest"
+                >
+                  <History size={16} className="mr-1" /> Clôturer Ma Session
+                </Button>
+              )}
             </div>
           </div>
         </div>
 
         {/* Product Grid Area (The "Top" Table) */}
         <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
-          <table className="dolisoft-table">
+          <table className="mzsoft-table">
             <thead>
               <tr>
                 <th>Code</th>
@@ -578,7 +812,7 @@ const POS: React.FC = () => {
             </span>
           </div>
           <div className="flex-1 overflow-y-auto font-sans">
-            <table className="dolisoft-table">
+            <table className="mzsoft-table">
               <thead className="sticky top-0 z-10">
                 <tr>
                   <th>Libellé</th>
@@ -590,13 +824,19 @@ const POS: React.FC = () => {
               </thead>
               <tbody>
                 {cart.map(item => (
-                  <tr key={item.id}>
-                    <td className="font-bold text-slate-700">{item.name}</td>
-                    <td className="text-right font-mono text-slate-500">{formatCurrency(item.price)}</td>
+                  <tr key={`${item.id}-${item.unit}`}>
+                    <td className="py-2">
+                       <p className="font-bold text-slate-700 leading-tight">{item.name}</p>
+                       <p className="text-[9px] text-slate-400 font-bold uppercase">{item.unit === 'ml' ? 'Facturation au Mètre' : 'Facturation à l\'unité'}</p>
+                    </td>
+                    <td className="text-right font-mono text-slate-500">
+                      {formatCurrency(item.price)}
+                      <span className="text-[9px] ml-1">/{item.unit || 'u'}</span>
+                    </td>
                     <td className="text-center px-1">
                       <div className="flex items-center justify-center gap-1 group/qty">
                         <button 
-                          onClick={() => updateQuantity(item.id, -1)} 
+                          onClick={() => updateQuantity(item.id, -1, item.unit)} 
                           className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95"
                           title="Retirer 1"
                         >
@@ -614,20 +854,21 @@ const POS: React.FC = () => {
                             if (!isNaN(val)) {
                               const product = products.find(p => p.id === item.id);
                               const stock = product ? Number(product.stockQuantity) : 0;
-                              const targetVal = Math.max(0, Math.min(val, stock)); // Allow 0 while typing
+                              const stockInUnit = item.unit === 'ml' ? stock * (product?.unitsPerRoll || 1) : stock;
+                              const targetVal = Math.max(0, Math.min(val, stockInUnit)); // Allow 0 while typing
                               
                               setCart(prev => prev.map(i => 
-                                i.id === item.id 
+                                (i.id === item.id && i.unit === item.unit)
                                   ? { ...i, quantity: targetVal, total: Number((targetVal * i.price).toFixed(2)) } 
                                   : i
                               ));
 
-                              if (val > stock) {
-                                showToast(`Stock maximum: ${stock}`, 'warning');
+                              if (val > stockInUnit) {
+                                showToast(`Stock maximum: ${stockInUnit} ${item.unit}`, 'warning');
                               }
                             } else if (e.target.value === '') {
                                setCart(prev => prev.map(i => 
-                                i.id === item.id 
+                                (i.id === item.id && i.unit === item.unit)
                                   ? { ...i, quantity: 0, total: 0 } 
                                   : i
                               ));
@@ -636,7 +877,7 @@ const POS: React.FC = () => {
                           className="w-16 h-7 text-center font-black text-sm bg-blue-50 border border-blue-200 rounded-md outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                         <button
-                          onClick={() => toggleUnit(item.id)}
+                          onClick={() => toggleUnit(item.id, item.unit || 'u')}
                           className="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded border border-blue-100 transition-colors"
                           title="Changer l'unité (u/ml)"
                         >
@@ -644,7 +885,7 @@ const POS: React.FC = () => {
                         </button>
                         
                         <button 
-                          onClick={() => updateQuantity(item.id, 1)} 
+                          onClick={() => updateQuantity(item.id, 1, item.unit)} 
                           className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95"
                           title="Ajouter 1"
                         >
@@ -723,6 +964,12 @@ const POS: React.FC = () => {
             <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Total HT</span>
             <span className="font-mono">{formatCurrency(subtotal)}</span>
           </div>
+          {settings.useTax && (
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">TVA ({taxRate * 100}%)</span>
+              <span className="font-mono">{formatCurrency(tax)}</span>
+            </div>
+          )}
           <div className="flex justify-between items-center text-sm border-t border-slate-700 pt-2">
             <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Remise</span>
             <div className="relative">
@@ -900,7 +1147,7 @@ const POS: React.FC = () => {
       <Modal isOpen={showPendingModal} onClose={() => setShowPendingModal(false)} title="Ventes en Instance (Attente)">
         <div className="space-y-4">
           <div className="max-h-96 overflow-y-auto border border-slate-200">
-             <table className="dolisoft-table">
+             <table className="mzsoft-table">
                 <thead>
                    <tr>
                       <th>Date / Heure</th>
@@ -913,7 +1160,7 @@ const POS: React.FC = () => {
                    {pendingSales.map((pending) => (
                       <tr key={pending.id} className="hover:bg-amber-50 group">
                          <td className="text-[11px] font-bold text-slate-500 italic">
-                            {pending.createdAt ? format(pending.createdAt.toDate(), 'dd/MM HH:mm') : '-'}
+                            {pending.createdAt ? format(typeof pending.createdAt.toDate === 'function' ? pending.createdAt.toDate() : new Date(pending.createdAt), 'dd/MM HH:mm') : '-'}
                          </td>
                          <td className="text-xs font-bold text-slate-800">
                             {pending.customerName}
@@ -995,6 +1242,60 @@ const POS: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmationModal
+        isOpen={!!pendingToRecall}
+        onClose={() => setPendingToRecall(null)}
+        onConfirm={() => confirmRecall()}
+        title="Récupérer une vente"
+        message="Le panier actuel sera remplacé par la vente en instance. Continuer ?"
+        confirmText="Remplacer le panier"
+        variant="warning"
+      />
+
+      <ConfirmationModal
+        isOpen={!!pendingToDelete}
+        onClose={() => setPendingToDelete(null)}
+        onConfirm={async () => {
+          if (!pendingToDelete) return;
+          try {
+            setIsDeletingPending(pendingToDelete.id);
+            await dbService.deleteDocument('pending_sales', pendingToDelete.id);
+            showToast("Mise en instance supprimée", "success");
+          } catch (error) {
+            showToast("Erreur lors de la suppression", "error");
+          } finally {
+            setIsDeletingPending(null);
+            setPendingToDelete(null);
+          }
+        }}
+        title="Supprimer mise en instance"
+        message="Voulez-vous vraiment supprimer cette vente mise en instance ?"
+        confirmText="Supprimer"
+        variant="danger"
+        isLoading={!!isDeletingPending}
+      />
+
+      <PromptModal
+        isOpen={!!mlProductToPrompt}
+        onClose={() => setMlProductToPrompt(null)}
+        onConfirm={(val) => {
+          if (mlProductToPrompt) {
+            const length = parseFloat(val);
+            if (isNaN(length) || length <= 0) {
+              showToast("Longueur invalide", "error");
+              return;
+            }
+            addToCart(mlProductToPrompt, 1, true, length);
+          }
+        }}
+        title="Vente au Mètre (ML)"
+        message={`Saisir la longueur en ML pour "${mlProductToPrompt?.name}" (Prix: ${mlProductToPrompt?.pricePerML} DA/ML)`}
+        defaultValue="1"
+        inputType="number"
+        inputPlaceholder="Ex: 50.5"
+        confirmText="Ajouter au Panier"
+      />
     </div>
   );
 };
