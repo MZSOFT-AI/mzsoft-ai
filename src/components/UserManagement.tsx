@@ -52,7 +52,8 @@ const UserManagement: React.FC = () => {
     canProcessReturns: false,
     canPerformInventory: false,
     canManageExpenses: false,
-    canViewReports: false
+    canViewReports: false,
+    canManageUsers: false
   });
 
   const { showToast } = useNotification();
@@ -124,7 +125,8 @@ const UserManagement: React.FC = () => {
       canProcessReturns: false,
       canPerformInventory: false,
       canManageExpenses: false,
-      canViewReports: false
+      canViewReports: false,
+      canManageUsers: false
     });
     setShowInviteForm(false);
     setEditingUser(null);
@@ -161,7 +163,8 @@ const UserManagement: React.FC = () => {
       canProcessReturns: user.role === 'admin' || user.role === 'manager',
       canPerformInventory: user.role === 'admin' || user.role === 'manager',
       canManageExpenses: user.role === 'admin' || user.role === 'manager',
-      canViewReports: user.role === 'admin' || user.role === 'manager'
+      canViewReports: user.role === 'admin' || user.role === 'manager',
+      canManageUsers: user.role === 'admin'
     });
     setShowInviteForm(true);
   };
@@ -177,6 +180,8 @@ const UserManagement: React.FC = () => {
       canProcessReturns: false,
       canPerformInventory: false,
       canManageExpenses: false,
+      canViewReports: false,
+      canManageUsers: false,
       [key]: true
     });
   };

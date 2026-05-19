@@ -185,7 +185,7 @@ export default function StockMovements() {
             </tr>
           </thead>
           <tbody>
-            {filteredMovements.map((m) => {
+            {(filteredMovements || []).map((m) => {
               const typeInfo = STOCK_TYPES[m.type] || { label: m.type, color: 'bg-slate-50', text: 'text-slate-500' };
               const isPositive = m.newStock > m.previousStock;
 

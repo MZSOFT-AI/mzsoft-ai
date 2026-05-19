@@ -2,13 +2,15 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useNotification } from '../../context/NotificationContext';
 import { MENU_ITEMS } from '../../constants';
-import { LogOut, Package, User } from 'lucide-react';
+import { LogOut, Package, User, Bell } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const Sidebar: React.FC = () => {
-  const { logout, user, userData, isAdmin, hasPermission } = useAuth();
+  const { logout, user, userData, isAdmin, isSuperAdmin, hasPermission } = useAuth();
   const { settings } = useSettings();
+  const { unreadCount, setIsPanelOpen } = useNotification();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -17,17 +19,17 @@ const Sidebar: React.FC = () => {
   };
 
   const filteredMenuItems = MENU_ITEMS.filter(item => {
-    if (item.id === 'dashboard') return isAdmin;
+    if (item.id === 'dashboard') return true;
     if (item.id === 'pos') return hasPermission('canSell');
     if (item.id === 'inventory') return hasPermission('canManageStock') || hasPermission('canPerformInventory');
-    if (item.id === 'sales-history') return true; // Everyone sees history but can't return without permission
-    if (item.id === 'cash-history') return userData?.role === 'admin' || userData?.role === 'manager';
-    if (item.id === 'users') return isAdmin;
+    if (item.id === 'sales-history') return true;
+    if (item.id === 'cash-history') return isAdmin;
+    if (item.id === 'users') return isSuperAdmin;
     if (item.id === 'quotes') return true;
     if (item.id === 'invoices') return hasPermission('canSell');
     if (item.id === 'expenses') return hasPermission('canManageExpenses');
     if (item.id === 'reports') return hasPermission('canViewReports');
-    if (item.id === 'settings') return isAdmin;
+    if (item.id === 'settings') return isSuperAdmin;
     if (item.id === 'returns') return hasPermission('canProcessReturns');
     if (item.id === 'customers') return true;
     if (item.id === 'suppliers') return hasPermission('canManageStock');
@@ -38,20 +40,34 @@ const Sidebar: React.FC = () => {
     <aside className="fixed left-0 top-0 h-full w-[260px] bg-slate-800 text-white z-50 flex flex-col shadow-xl">
       {/* Brand Header */}
       <div className="p-6 bg-slate-900 border-b border-slate-700">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded flex items-center justify-center shadow-lg transform -rotate-3 group-hover:rotate-0 transition-transform overflow-hidden">
-            {settings.logo ? (
-              <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <Package className="text-white w-6 h-6" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 bg-blue-600 rounded flex items-center justify-center shadow-lg transform -rotate-3 group-hover:rotate-0 transition-transform overflow-hidden shrink-0">
+              {settings.logo ? (
+                <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <Package className="text-white w-6 h-6" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <span className="font-black text-xl tracking-tighter block leading-tight truncate uppercase">{settings.name}</span>
+              <span className="text-[8px] font-bold text-blue-400 uppercase tracking-widest mt-1 block truncate">
+                {settings.slogan || 'ERP & POS SYSTEM'}
+              </span>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => setIsPanelOpen(true)}
+            className="p-2 relative hover:bg-slate-800 rounded-xl transition-colors text-slate-400 hover:text-white"
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-slate-900 animate-pulse">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
             )}
-          </div>
-          <div className="min-w-0">
-            <span className="font-black text-xl tracking-tighter block leading-tight truncate uppercase">{settings.name}</span>
-            <span className="text-[8px] font-bold text-blue-400 uppercase tracking-widest mt-1 block truncate">
-              {settings.slogan || 'ERP & POS SYSTEM'}
-            </span>
-          </div>
+          </button>
         </div>
       </div>
 

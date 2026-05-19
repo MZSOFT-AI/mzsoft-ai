@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, query, collection, where, getDocs, limit, updateDoc, addDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { notificationService } from '../services/notificationService';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { UserData, UserPermissions } from '../types';
 import { safeStringify, cleanObject } from '../lib/utils';
@@ -19,7 +20,6 @@ interface AuthContextType {
   loading: boolean;
   signIn: () => Promise<void>;
   loginLocal: (username: string, password: string) => Promise<void>;
-  loginAsSeller: () => Promise<void>;
   registerFirstAdmin: (username: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
   usersExist: boolean;
@@ -95,7 +95,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
               }
             } else if (user.email) {
-              // Existing Google Auth logic...
               const emailDocRef = doc(db, 'users', user.email.toLowerCase());
               const emailDoc = await getDoc(emailDocRef);
               
@@ -112,28 +111,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 await setDoc(userDocRef, newUserData);
                 await deleteDoc(emailDocRef);
                 userDoc = await getDoc(userDocRef);
-              } else {
-                const newUserData = cleanObject({
-                  displayName: user.displayName || 'Utilisateur',
-                  email: user.email,
-                  role: 'vendeur',
+              } else if (user.email.toLowerCase() === 'djelloulmohamed1990@gmail.com') {
+                const superAdminData = cleanObject({
+                  displayName: user.displayName || 'Super Admin',
+                  email: user.email.toLowerCase(),
+                  role: 'superadmin',
                   createdAt: serverTimestamp(),
                   photoURL: user.photoURL,
                   permissions: {
-                    canManageStock: false,
-                    canDeleteProducts: false,
-                    canSell: true,
-                    canProcessReturns: false,
-                    canPerformInventory: false,
-                    canManageExpenses: false,
-                    canViewReports: false,
-                    canManageUsers: false
+                    canManageStock: true, canDeleteProducts: true, canSell: true, canProcessReturns: true,
+                    canPerformInventory: true, canManageExpenses: true, canViewReports: true, canManageUsers: true
                   },
-                  status: 'active'
+                  status: 'active',
+                  uid: user.uid
                 });
-                await setDoc(userDocRef, newUserData);
+                await setDoc(userDocRef, superAdminData);
                 userDoc = await getDoc(userDocRef);
+              } else {
+                await signOut(auth);
+                setLoading(false);
+                return;
               }
+            } else {
+              await signOut(auth);
+              setLoading(false);
+              return;
             }
           }
           
@@ -185,12 +187,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSigningIn(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      if (user.email) {
+        // Check if user is in our allowed list
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        const emailDocRef = doc(db, 'users', user.email.toLowerCase());
+        const emailDoc = await getDoc(emailDocRef);
+
+        if (!userDoc.exists() && !emailDoc.exists() && user.email.toLowerCase() !== 'djelloulmohamed1990@gmail.com') {
+          // Force logout if not unauthorized
+          await signOut(auth);
+          throw new Error('Accès non autorisé : Vous n\'avez pas les permissions nécessaires.');
+        }
+
+        await notificationService.createNotification({
+          type: 'user',
+          title: 'Connexion Google',
+          message: `L'utilisateur ${user.displayName || user.email} s'est connecté au système.`,
+          priority: 'low',
+          triggeredBy: user.uid,
+          triggeredByName: user.displayName || user.email,
+          metadata: { entityId: user.uid, entityType: 'user' }
+        });
+      }
     } catch (error: any) {
       if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
         console.log('Sign-in popup issue:', error.code);
       } else {
         console.error('Sign-in error:', safeStringify(error));
+        throw error;
       }
     } finally {
       setIsSigningIn(false);
@@ -210,6 +238,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const docSnap = snap.docs[0];
       const data = docSnap.data();
 
+      if (data.status === 'inactive') {
+        throw new Error('Votre compte est désactivé.');
+      }
+
+      if (data.role !== 'admin' && data.role !== 'superadmin') {
+        throw new Error('Accès non autorisé : Permissions insuffisantes.');
+      }
+
       if (data.localPassword !== password) {
         throw new Error('Mot de passe incorrect');
       }
@@ -222,56 +258,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLocalUser(localUserData);
       setUserData(localUserData);
       localStorage.setItem('mzsoft_local_user', safeStringify(localUserData));
+
+      await notificationService.createNotification({
+        type: 'user',
+        title: 'Connexion Interne',
+        message: `L'utilisateur ${data.displayName} (${data.role}) s'est connecté au point de vente.`,
+        priority: 'low',
+        triggeredBy: docSnap.id,
+        triggeredByName: data.displayName,
+        metadata: { entityId: docSnap.id, entityType: 'user' }
+      });
     } catch (error) {
       console.error(safeStringify(error));
-      throw error;
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
-  const loginAsSeller = async () => {
-    setIsSigningIn(true);
-    try {
-      const userCred = await signInAnonymously(auth);
-      const sellerId = userCred.user.uid;
-      
-      // Check if user record already exists
-      const userDocRef = doc(db, 'users', sellerId);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        const sellerData: UserData = {
-          id: sellerId,
-          displayName: `Vendeur ${sellerId.substring(0, 4)}`,
-          email: null,
-          role: 'vendeur',
-          createdAt: new Date(),
-          uid: sellerId,
-          permissions: {
-            canManageStock: false,
-            canDeleteProducts: false,
-            canSell: true,
-            canProcessReturns: false,
-            canPerformInventory: false,
-            canManageExpenses: false,
-            canViewReports: false,
-            canManageUsers: false
-          },
-          status: 'active'
-        };
-
-        await setDoc(userDocRef, cleanObject({
-          ...sellerData,
-          createdAt: serverTimestamp()
-        }));
-        
-        setUserData(sellerData);
-      } else {
-        setUserData({ id: userDoc.id, ...userDoc.data() } as UserData);
-      }
-    } catch (error) {
-      console.error('Seller login error:', safeStringify(error));
       throw error;
     } finally {
       setIsSigningIn(false);
@@ -366,23 +364,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       userData?.email?.toLowerCase() === 'djelloulmohamed1990@gmail.com';
   
   const isAdminOnly = userData?.role === 'admin';
-  const isManager = userData?.role === 'manager';
-  const isAdmin = isSuperAdmin || isAdminOnly || isManager;
+  const isAdmin = isSuperAdmin || isAdminOnly;
 
   const hasPermission = (permission: keyof UserPermissions) => {
     if (isSuperAdmin) return true;
     if (isAdminOnly && permission !== 'canManageUsers') return true;
     
     if (!userData?.permissions) {
-      if (isManager && permission !== 'canManageUsers') return true;
-      if (permission === 'canSell') return true;
       return false;
     }
     return !!userData.permissions[permission];
   };
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading, signIn, loginLocal, loginAsSeller, registerFirstAdmin, logout, isAdmin, isSuperAdmin, usersExist, isSigningIn, hasPermission }}>
+    <AuthContext.Provider value={{ user, userData, loading, signIn, loginLocal, registerFirstAdmin, logout, isAdmin, isSuperAdmin, usersExist, isSigningIn, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

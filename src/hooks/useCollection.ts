@@ -16,36 +16,56 @@ export function useCollection<T = DocumentData>(
 ) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    setLoading(true);
+    let isMounted = true;
     const q = query(collection(db, collectionName), ...queryConstraints);
     
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const items = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as T));
+        if (!isMounted) return;
+        const items = snapshot.docs.map(doc => {
+          try {
+            return {
+              id: doc.id,
+              ...doc.data()
+            } as T;
+          } catch (e) {
+            console.error(`Error mapping doc ${doc.id} in ${collectionName}:`, e);
+            return null;
+          }
+        }).filter(Boolean) as T[];
+        
         setData(items);
         setLoading(false);
+        setIsInitialLoad(false);
+        setError(null);
       },
       (err) => {
+        if (!isMounted) return;
         console.error(`Error fetching collection ${collectionName}:`, safeStringify(err));
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
+        setIsInitialLoad(false);
         try {
-          handleFirestoreError(err, OperationType.LIST, collectionName);
+          // Only handle error if it's a real permission issue
+          if (err.message?.includes('permission')) {
+             handleFirestoreError(err, OperationType.LIST, collectionName);
+          }
         } catch (e) {
           console.error("Secondary error in handler:", safeStringify(e));
         }
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [collectionName]);
 
-  return { data, loading, error };
+  return { data: data || [], loading, isInitialLoad, error };
 }

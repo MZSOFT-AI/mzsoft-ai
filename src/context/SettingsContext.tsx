@@ -29,6 +29,10 @@ const DEFAULT_SETTINGS: CompanySettings = {
   lockSessions: false,
   useTax: false,
   taxRate: 19,
+  notifyLowStock: true,
+  notifyStockDiscrepancy: true,
+  notifyCashDiscrepancy: true,
+  customCompanyInfo: '',
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);

@@ -1,7 +1,7 @@
 import React from 'react';
 import Modal from './Modal';
 import { Button } from './Button';
-import { AlertCircle, Trash2, HelpCircle } from 'lucide-react';
+import { AlertCircle, Trash2, HelpCircle, FileText } from 'lucide-react';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -11,7 +11,7 @@ interface ConfirmationModalProps {
   message: string;
   confirmText?: string;
   cancelText?: string;
-  variant?: 'danger' | 'warning' | 'info';
+  variant?: 'danger' | 'warning' | 'info' | 'success';
   isLoading?: boolean;
 }
 
@@ -30,6 +30,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     switch (variant) {
       case 'danger': return <Trash2 className="text-rose-500" size={32} />;
       case 'warning': return <AlertCircle className="text-amber-500" size={32} />;
+      case 'success': return <FileText className="text-emerald-500" size={32} />;
       default: return <HelpCircle className="text-blue-500" size={32} />;
     }
   };
@@ -38,6 +39,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     switch (variant) {
       case 'danger': return 'bg-rose-600 hover:bg-rose-700';
       case 'warning': return 'bg-amber-500 hover:bg-amber-600';
+      case 'success': return 'bg-emerald-600 hover:bg-emerald-700';
       default: return 'bg-blue-600 hover:bg-blue-700';
     }
   };
@@ -46,6 +48,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     switch (variant) {
       case 'danger': return 'bg-rose-50';
       case 'warning': return 'bg-amber-50';
+      case 'success': return 'bg-emerald-50';
       default: return 'bg-blue-50';
     }
   };

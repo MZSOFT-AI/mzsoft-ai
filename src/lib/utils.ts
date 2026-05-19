@@ -64,130 +64,95 @@ export function cleanObject(obj: any): any {
  * Manually traverses the object to avoid circularity issues before JSON.stringify
  */
 export function safeStringify(obj: any): string {
-  const cache = new WeakSet();
-
-  const getSerializable = (o: any, depth: number = 0): any => {
-    // Handle null, undefined, and non-objects
-    if (o === null || typeof o !== 'object') {
-      return o;
-    }
-
-    // Protection against extremely deep/infinite structures
-    if (depth > 8) {
-      return '[Max Depth Reached]';
-    }
-
-    // Handle circular references
-    if (cache.has(o)) {
-      return '[Circular]';
-    }
+  // Use a Set to track visited objects for circularity detection
+  const cache = new Set();
+  
+  const replacer = (key: string, value: any) => {
+    // Handle null/undefined immediately
+    if (value === null || value === undefined) return value;
     
-    // Add to cache before processing properties
-    cache.add(o);
+    // Only objects and functions can be circular
+    if (typeof value === 'object' || typeof value === 'function') {
+      if (cache.has(value)) {
+        return '[Circular]';
+      }
+      cache.add(value);
 
-    // Handle Firestore Timestamps explicitly
-    if (typeof o.toDate === 'function' && typeof o.seconds === 'number') {
-      return o.toDate().toISOString();
-    }
-
-    // Handle Dates
-    if (o instanceof Date) {
-      return o.toISOString();
-    }
-
-    // Handle Errors (standard JSON.stringify(new Error) returns {})
-    if (o instanceof Error) {
-      const errorObj: any = {
-        name: o.name,
-        message: o.message,
-        stack: o.stack,
-      };
-      // Capture custom properties on the error
-      Object.getOwnPropertyNames(o).forEach(key => {
-        if (!['name', 'message', 'stack'].includes(key)) {
-          try {
-            const val = (o as any)[key];
-            if (typeof val !== 'function' && key !== 'toJSON') {
-              errorObj[key] = getSerializable(val, depth + 1);
-            }
-          } catch (e) {
-            errorObj[key] = '[Unreadable Property]';
-          }
-        }
-      });
-      return errorObj;
-    }
-
-    // Handle Arrays
-    if (Array.isArray(o)) {
-      return o.map(item => {
+      // Handle common circular/complex types that shouldn't be stringified deeply
+      if (typeof window !== 'undefined') {
+        if (value === window) return '[Window]';
+        if (value === document) return '[Document]';
+        
+        // Handle DOM elements (they are highly circular)
         try {
-          return getSerializable(item, depth + 1);
-        } catch {
-          return '[Error in array serialization]';
+          if (value instanceof Node || (value.nodeType && typeof value.nodeName === 'string')) {
+            return `[HTMLElement: ${value.nodeName || 'Element'}]`;
+          }
+        } catch (e) {
+          // Ignore
         }
-      });
-    }
-
-    // Handle Objects
-    // If it's a class instance (not a plain object or array), be more careful
-    const constructorName = o.constructor?.name;
-    const isPlainObject = !constructorName || constructorName === 'Object';
-
-    if (!isPlainObject) {
-      // For complex objects (like Firestore internal classes), don't try to recurse deeply
-      // or at all if it's very likely to be circular/complex
-      if (depth > 2) {
-        return `[Complex Object: ${constructorName || 'Unknown'}]`;
       }
-    }
 
-    const result: Record<string, any> = {};
-    
-    // Instead of for...in (which follows prototype chain), use Object.keys for own properties
-    const keys = Object.keys(o);
-    
-    for (const key of keys) {
+      // Handle Errors
+      if (value instanceof Error) {
+        return {
+          name: value.name,
+          message: value.message,
+          stack: value.stack
+        };
+      }
+
+      // Handle Firestore and other complex class instances
       try {
-        const val = o[key];
-        
-        // Skip functions and the special toJSON property
-        if (typeof val === 'function' || key === 'toJSON') {
-          continue;
-        }
-
-        // Skip potentially problematic properties (like DOM nodes if they leak in)
-        if (val && typeof val === 'object') {
-          if ('nodeType' in val || val.constructor?.name === 'Window') {
-            result[key] = '[Complex Browser Object]';
-            continue;
+        const constructorName = value.constructor?.name;
+        if (constructorName && !['Object', 'Array', 'Date', 'Number', 'String', 'Boolean'].includes(constructorName)) {
+          // Special handling for Firestore objects
+          if (typeof value.toDate === 'function') return value.toDate().toISOString();
+          
+          // For other complex objects (especially minified ones like Y2, Ka), return just the name
+          if (constructorName.length < 3) { 
+             return `[Complex Object: ${constructorName}]`;
           }
         }
-        
-        result[key] = getSerializable(val, depth + 1);
       } catch (e) {
-        result[key] = '[Unreadable Property]';
+        return '[Uninspectable Object]';
       }
     }
-    
-    return result;
+    return value;
   };
 
   try {
-    const serializable = getSerializable(obj, 0);
-    return JSON.stringify(serializable, null, 2);
+    return JSON.stringify(obj, replacer, 2);
   } catch (err) {
-    // Ultimate fallback if JSON.stringify still fails
     try {
-      // Try one more time with a super shallow version
-      const shallow: any = {};
-      Object.keys(obj).forEach(k => {
-        const v = obj[k];
-        shallow[k] = typeof v === 'object' ? `[Object ${v?.constructor?.name || '?'}]` : v;
-      });
-      return JSON.stringify(shallow, null, 2);
+      // Fallback for extreme cases
+      return `[Serialization Failure: ${String(err)}]`;
     } catch {
-      return `[Final Stringify Error: ${String(err)}]`;
+      return '[Total Serialization Failure]';
     }
+  }
+}
+
+/**
+ * Safely parse a firestore error stringified JSON
+ */
+export function parseFirestoreError(error: any): { error: string, path?: string, operation?: string } {
+  const defaultError = { error: error?.message || String(error) || 'Une erreur inconnue est survenue' };
+  
+  if (!error || !error.message) return defaultError;
+
+  try {
+    const data = JSON.parse(error.message);
+    return {
+      error: data.error || 'Erreur Firestore',
+      path: data.path,
+      operation: data.operationType
+    };
+  } catch (e) {
+    // Check if it's a standard Firebase permission error
+    if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
+      return { error: 'Droit d\'accès insuffisant pour cette opération.' };
+    }
+    return defaultError;
   }
 }

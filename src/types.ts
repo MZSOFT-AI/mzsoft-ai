@@ -30,6 +30,7 @@ export interface UserData extends BaseEntity {
   isLocalOnly?: boolean;
   permissions?: UserPermissions;
   status?: 'active' | 'inactive';
+  lastLoginAt?: Timestamp | Date;
 }
 
 export interface Category extends BaseEntity {
@@ -73,6 +74,9 @@ export interface Customer extends BaseEntity {
   phone?: string;
   email?: string;
   address?: string;
+  nif?: string;
+  rc?: string;
+  ai?: string;
   totalSpent: number;
   totalPaid: number;
   totalDebt: number;
@@ -118,11 +122,18 @@ export interface Quote extends BaseEntity {
   totalAmount: number;
   customerName?: string;
   customerId?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerNIF?: string;
+  customerRC?: string;
+  customerAI?: string;
   userId: string;
   userName?: string;
   status: 'draft' | 'sent' | 'accepted' | 'converted' | 'expired';
   expiryDate?: Timestamp | Date;
   notes?: string;
+  customCompanyInfo?: string;
 }
 
 export interface Invoice extends BaseEntity {
@@ -154,6 +165,7 @@ export interface Invoice extends BaseEntity {
   dueDate?: Timestamp | Date;
   referenceQuoteId?: string;
   paymentHistory?: PaymentRecord[];
+  customCompanyInfo?: string;
 }
 
 export interface PaymentRecord {
@@ -173,6 +185,7 @@ export interface Sale extends BaseEntity {
   userId: string;
   userName?: string;
   status?: 'completed' | 'partially_returned' | 'returned';
+  customCompanyInfo?: string;
 }
 
 export interface Supplier extends BaseEntity {
@@ -210,6 +223,12 @@ export interface CompanySettings extends BaseEntity {
   lockSessions?: boolean;
   useTax?: boolean;
   taxRate?: number;
+  notifyLowStock?: boolean;
+  notifyStockDiscrepancy?: boolean;
+  notifyCashDiscrepancy?: boolean;
+  notificationSound?: boolean;
+  desktopNotifications?: boolean;
+  customCompanyInfo?: string;
 }
 
 export interface DailyClosing extends BaseEntity {
@@ -234,4 +253,23 @@ export interface DailyClosing extends BaseEntity {
   difference?: number;         // actualCashInDrawer - theoreticalCash
   withdrawnAmount?: number;    // Amount taken out for bank/safe
   nextSessionCash?: number;    // Float left in drawer for next session
+}
+
+export interface AppNotification extends BaseEntity {
+  type: 'low_stock' | 'stock_discrepancy' | 'cash_discrepancy' | 'system' | 'sale' | 'invoice' | 'quote' | 'user' | 'deletion' | 'payment' | 'security';
+  title: string;
+  message: string;
+  isRead: boolean;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'unread' | 'read' | 'archived';
+  metadata?: {
+    link?: string;
+    entityId?: string;
+    entityType?: 'sale' | 'product' | 'invoice' | 'user' | 'quote' | 'stock_movement' | 'expense' | 'category';
+    [key: string]: any;
+  };
+  userId?: string; // Recipient (null for all admins)
+  userName?: string;
+  triggeredBy?: string;
+  triggeredByName?: string;
 }

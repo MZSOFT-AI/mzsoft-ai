@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
-import { cleanObject, formatCurrency } from '../lib/utils';
+import { cleanObject, formatCurrency, cn } from '../lib/utils';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { pdfService } from '../services/pdfService';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter } from 'lucide-react';
+import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter, ShoppingCart } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Modal from '../components/ui/Modal';
@@ -271,11 +271,12 @@ export default function SalesHistory() {
     }
   };
 
-  const filteredSales = sales.filter(s => {
+  const filteredSales = (sales || []).filter(s => {
+    if (!s) return false;
     const matchesSearch = 
-      s.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      s.userName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.customerName?.toLowerCase().includes(searchQuery.toLowerCase());
+      (s.id || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (s.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.customerName || '').toLowerCase().includes(searchQuery.toLowerCase());
     
     if (!matchesSearch) return false;
 
@@ -350,8 +351,8 @@ export default function SalesHistory() {
   }, [sortedDays]);
 
   const handleDownloadInvoice = (sale: any) => {
-    pdfService.generateInvoice({
-      invoiceNumber: sale.id,
+    const saleData = {
+      invoiceNumber: sale.invoiceNumber || sale.id,
       date: getSafeDate(sale.createdAt),
       items: sale.items.map((item: any) => ({
         name: item.name,
@@ -359,12 +360,21 @@ export default function SalesHistory() {
         price: item.price
       })),
       customerName: sale.customerName || 'Client de passage',
+      customerPhone: sale.customerPhone,
+      customerAddress: sale.customerAddress,
+      customerEmail: sale.customerEmail,
       totalAmount: sale.totalAmount,
-      receivedAmount: sale.receivedAmount,
+      receivedAmount: sale.receivedAmount || sale.amountPaid,
       change: sale.change,
       paymentMethod: sale.paymentMethod,
       userName: sale.userName || 'Admin'
-    });
+    };
+
+    if (sale.source === 'invoice') {
+      pdfService.generateInvoice(saleData as any);
+    } else {
+      pdfService.generateReceipt(saleData as any);
+    }
   };
 
   const handleDownloadReturnSlip = (sale: any) => {
@@ -710,8 +720,8 @@ export default function SalesHistory() {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2">Montant</span>
                </div>
                <div className="divide-y divide-slate-100">
-                  {selectedSale.items.map((item: any, i: number) => {
-                    const availableToReturn = item.quantity - (item.returnedQuantity || 0);
+                    {(selectedSale.items || []).map((item: any, i: number) => {
+                      const availableToReturn = (item.quantity || 0) - (item.returnedQuantity || 0);
                     return (
                       <div key={i} className="p-3 hover:bg-white transition-colors">
                         <div className="flex justify-between items-center">

@@ -10,7 +10,7 @@ import { Button } from '../components/ui/Button';
 import { useNotification } from '../context/NotificationContext';
 
 const Login: React.FC = () => {
-  const { signIn, loginLocal, loginAsSeller, registerFirstAdmin, user, userData, loading, isSigningIn, usersExist } = useAuth();
+  const { signIn, loginLocal, registerFirstAdmin, user, userData, loading, isSigningIn, usersExist } = useAuth();
   const { settings } = useSettings();
   const { showToast } = useNotification();
   
@@ -21,15 +21,6 @@ const Login: React.FC = () => {
 
   if (loading) return null;
   if (user || userData) return <Navigate to="/" replace />;
-
-  const handleSellerLogin = async () => {
-    try {
-      await loginAsSeller();
-      showToast("Accès vendeur activé", "success");
-    } catch (error: any) {
-      showToast("Erreur lors de la connexion vendeur", "error");
-    }
-  };
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,27 +178,8 @@ const Login: React.FC = () => {
                     <Lock className="text-blue-600 mt-1" size={20} />
                     <div>
                         <p className="text-xs font-black text-blue-800 uppercase tracking-widest mb-1">Accès Sécurisé</p>
-                        <p className="text-xs text-blue-600 font-medium">Choisissez votre mode de connexion.</p>
+                        <p className="text-xs text-blue-600 font-medium">Connectez-vous avec votre compte administratif.</p>
                     </div>
-                  </div>
-
-                  <Button 
-                    onClick={handleSellerLogin}
-                    disabled={isSigningIn}
-                    className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded flex items-center justify-center gap-3 font-black uppercase text-sm tracking-widest shadow-lg transition-all active:scale-95"
-                  >
-                    {isSigningIn ? (
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    ) : (
-                      <Package size={20} />
-                    )}
-                    Mode Vendeur (Accès Rapide)
-                  </Button>
-
-                  <div className="flex items-center gap-4 py-1">
-                    <div className="h-px flex-1 bg-slate-100" />
-                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">OU ADMIN</span>
-                    <div className="h-px flex-1 bg-slate-100" />
                   </div>
 
                   <button
@@ -223,7 +195,7 @@ const Login: React.FC = () => {
                     ) : (
                       <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 grayscale" />
                     )}
-                    {isSigningIn ? 'SÉCURISATION...' : 'CONTINUER AVEC GOOGLE'}
+                    {isSigningIn ? 'VÉRIFICATION...' : 'CONTINUER AVEC GOOGLE'}
                   </button>
 
                   <div className="flex items-center gap-4 py-2">

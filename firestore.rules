@@ -68,7 +68,7 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow list: if (request.query.limit <= 1) || isAdmin();
-      allow get: if (isSignedIn() && (request.auth.uid == userId || isAdmin())) || (resource != null && resource.data.username != null);
+      allow get: if (isAdmin() && (request.auth.uid == userId || isAdmin())) || (resource != null && resource.data.username != null);
       
       allow create: if (
         isAdmin() ||
@@ -76,7 +76,7 @@ service cloud.firestore {
         (request.auth.token.provider_id == 'anonymous' && incoming().uid == request.auth.uid)
       ) && isValidUser(incoming());
 
-      allow update: if isSignedIn() && (
+      allow update: if isAdmin() && (
         (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt', 'localPassword', 'uid'])) ||
         canManageUsers()
       );
@@ -101,7 +101,7 @@ service cloud.firestore {
     }
 
     match /products/{productId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin();
       allow create: if hasPermission('canManageStock');
       allow update: if hasPermission('canManageStock') || (
         hasPermission('canSell') && incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'updatedAt'])
@@ -127,8 +127,8 @@ service cloud.firestore {
     }
 
     match /sales/{saleId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin() || hasPermission('canViewReports'));
+      allow get: if isAdmin();
+      allow list: if isAdmin();
       allow create: if hasPermission('canSell') && isValidSale(incoming());
       allow update: if hasPermission('canProcessReturns') || (
         isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'items', 'updatedAt'])
@@ -140,10 +140,10 @@ service cloud.firestore {
     // DAILY CLOSINGS
     // ---------------------------------------------------------
     match /daily_closings/{closingId} {
-      allow list: if isSignedIn();
-      allow get: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (isAdmin() || existing().userId == request.auth.uid);
+      allow list: if isAdmin();
+      allow get: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -166,9 +166,9 @@ service cloud.firestore {
     }
 
     match /pending_sales/{saleId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
-      allow create, update: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && isValidPendingSale(incoming());
-      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isValidPendingSale(incoming());
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
@@ -185,12 +185,9 @@ service cloud.firestore {
     }
 
     match /customers/{customerId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidCustomer(incoming());
-      allow update: if isSignedIn() && isValidCustomer(incoming()) && (
-        isAdmin() ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['totalSpent', 'totalPaid', 'totalDebt', 'updatedAt'])
-      );
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidCustomer(incoming());
+      allow update: if isAdmin() && isValidCustomer(incoming());
       allow delete: if isAdmin();
     }
 
@@ -198,7 +195,7 @@ service cloud.firestore {
     // SUPPLIERS
     // ---------------------------------------------------------
     match /suppliers/{supplierId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin();
       allow create, update: if hasPermission('canManageStock');
       allow delete: if isAdmin();
     }
@@ -207,7 +204,7 @@ service cloud.firestore {
     // CATEGORIES
     // ---------------------------------------------------------
     match /categories/{categoryId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin();
       allow create, update, delete: if hasPermission('canManageStock');
     }
 
@@ -215,8 +212,7 @@ service cloud.firestore {
     // EXPENSES
     // ---------------------------------------------------------
     match /expenses/{expenseId} {
-      allow list: if isAdmin() || hasPermission('canViewReports') || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow get: if isAdmin() || hasPermission('canViewReports') || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list, get: if isAdmin();
       allow create: if hasPermission('canManageExpenses');
       allow update, delete: if isAdmin();
     }
@@ -225,7 +221,7 @@ service cloud.firestore {
     // STOCK MOVEMENTS
     // ---------------------------------------------------------
     match /stock_movements/{movementId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin();
       allow create: if hasPermission('canSell') || hasPermission('canManageStock');
       allow update, delete: if isAdmin();
     }
@@ -248,6 +244,9 @@ service cloud.firestore {
         && (!data.keys().hasAny(['tva']) || data.tva is string)
         && (!data.keys().hasAny(['footerText']) || data.footerText is string)
         && (!data.keys().hasAny(['lockSessions']) || data.lockSessions is bool)
+        && (!data.keys().hasAny(['notifyLowStock']) || data.notifyLowStock is bool)
+        && (!data.keys().hasAny(['notifyStockDiscrepancy']) || data.notifyStockDiscrepancy is bool)
+        && (!data.keys().hasAny(['notifyCashDiscrepancy']) || data.notifyCashDiscrepancy is bool)
         && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time);
     }
 
@@ -275,16 +274,9 @@ service cloud.firestore {
     }
 
     match /invoices/{invoiceId} {
-      allow read: if isSignedIn();
-      allow get: if isSignedIn();
-      allow create: if isSignedIn() && isValidInvoice(incoming());
-      allow update: if isSignedIn() && isValidInvoice(incoming()) && (
-        isAdmin() || 
-        // Action: Record payment
-        (incoming().diff(existing()).affectedKeys().hasOnly(['amountPaid', 'balance', 'paymentStatus', 'status', 'paymentHistory', 'updatedAt'])) ||
-        // Action: Finalize draft
-        (existing().status == 'draft' && incoming().diff(existing()).affectedKeys().hasAll(['status', 'paymentStatus']))
-      );
+      allow read, get: if isAdmin();
+      allow create: if isAdmin() && isValidInvoice(incoming());
+      allow update: if isAdmin() && isValidInvoice(incoming());
       allow delete: if isAdmin();
     }
 
@@ -303,8 +295,8 @@ service cloud.firestore {
     }
 
     match /inventory_audits/{auditId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidInventoryAudit(incoming());
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isValidInventoryAudit(incoming());
       allow delete: if isAdmin();
     }
 
@@ -332,10 +324,10 @@ service cloud.firestore {
     }
 
     match /quotes/{quoteId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidQuote(incoming());
-      allow update: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid) && isValidQuote(incoming());
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid && resource.data.status == 'draft');
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidQuote(incoming());
+      allow update: if isAdmin() && isValidQuote(incoming());
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------
@@ -344,6 +336,29 @@ service cloud.firestore {
     match /system_logs/{logId} {
       allow create: if isSignedIn();
       allow read: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // NOTIFICATIONS
+    // ---------------------------------------------------------
+    function isValidNotification(data) {
+      return data.keys().hasAll(['type', 'title', 'message', 'isRead', 'priority', 'createdAt'])
+        && data.type in ['low_stock', 'stock_discrepancy', 'cash_discrepancy', 'system']
+        && data.title is string && data.title.size() <= 200
+        && data.message is string && data.message.size() <= 1000
+        && data.isRead is bool
+        && data.priority in ['low', 'medium', 'high', 'critical']
+        && (!data.keys().hasAny(['userId']) || data.userId is string)
+        && (!data.keys().hasAny(['userName']) || data.userName is string)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time));
+    }
+
+    match /notifications/{notificationId} {
+      allow list, get: if isAdmin();
+      allow create: if isSignedIn() && isValidNotification(incoming());
+      allow update: if isAdmin() && isValidNotification(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt']);
+      allow delete: if isAdmin();
     }
 
   }

@@ -264,6 +264,26 @@
         "lockSessions": { "type": "boolean" }
       },
       "required": ["name", "currency", "currencySymbol"]
+    },
+    "AppNotification": {
+      "title": "Notification",
+      "description": "Alertes système et notifications critiques pour les administrateurs",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["low_stock", "stock_discrepancy", "cash_discrepancy", "system", "sale", "invoice", "quote", "user", "deletion", "payment", "security"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "status": { "type": "string", "enum": ["unread", "read", "archived"] },
+        "metadata": { "type": "object" },
+        "userId": { "type": "string", "description": "ID du destinataire (null pour diffusion admins)" },
+        "triggeredBy": { "type": "string" },
+        "triggeredByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "title", "message", "isRead", "status", "priority", "createdAt"]
     }
   },
   "firestore": {
@@ -280,6 +300,7 @@
     "/inventory_audits/{auditId}": { "schema": "InventoryAudit", "description": "Réconciliations de stock" },
     "/quotes/{quoteId}": { "schema": "Quote", "description": "Devis clients" },
     "/invoices/{invoiceId}": { "schema": "Invoice", "description": "Factures clients" },
-    "/settings/{settingId}": { "schema": "Settings", "description": "Configuration entreprise" }
+    "/settings/{settingId}": { "schema": "Settings", "description": "Configuration entreprise" },
+    "/notifications/{notificationId}": { "schema": "AppNotification", "description": "Alertes et notifications système" }
   }
 }

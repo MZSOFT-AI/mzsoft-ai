@@ -4,8 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
-import { Sale, Product } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { Sale, Product, AppNotification } from '../types';
+import { formatCurrency, cn, safeStringify } from '../lib/utils';
+import { notificationService } from '../services/notificationService';
 import { 
   TrendingUp, 
   Box, 
@@ -43,10 +44,26 @@ const Dashboard: React.FC = () => {
   const [products, setProducts] = React.useState<Product[]>([]);
   const [customers, setCustomers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [notifications, setNotifications] = React.useState<AppNotification[]>([]);
 
   const canViewFinancials = hasPermission('canViewReports');
   const canManageStock = hasPermission('canManageStock');
   const canSell = hasPermission('canSell');
+
+  React.useEffect(() => {
+    if (isAdmin) {
+      const q = query(
+        collection(db, 'notifications'),
+        where('isRead', '==', false),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+      const unsub = onSnapshot(q, (snap) => {
+        setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification)));
+      });
+      return unsub;
+    }
+  }, [isAdmin]);
 
   React.useEffect(() => {
     const currentUid = user?.uid || userData?.id;
@@ -181,6 +198,53 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Notifications Section for Admins */}
+      {isAdmin && notifications.length > 0 && (
+        <div className="bg-rose-50 border-l-4 border-rose-600 p-4 shadow-sm animate-pulse-slow">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="text-rose-600" size={20} />
+              <h2 className="text-sm font-black uppercase tracking-widest text-rose-900">Alertes Critiques ({notifications.length})</h2>
+            </div>
+            <button 
+              onClick={() => notificationService.markAllAsRead()}
+              className="text-[10px] font-black uppercase text-rose-600 hover:text-rose-800 underline"
+            >
+              Tout marquer comme lu
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+             {(notifications || []).map(notif => (
+               <div key={notif.id} className="bg-white p-3 rounded border border-rose-100 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                       <span className={cn(
+                         "text-[9px] font-black uppercase px-2 py-0.5 rounded",
+                         notif.type === 'cash_discrepancy' ? "bg-amber-100 text-amber-600" : 
+                         notif.type === 'stock_discrepancy' ? "bg-purple-100 text-purple-600" :
+                         "bg-red-100 text-red-600"
+                       )}>
+                         {notif.priority}
+                       </span>
+                       <span className="text-[9px] font-bold text-slate-400">
+                         {notif.createdAt ? format((notif.createdAt as any).toDate ? (notif.createdAt as any).toDate() : new Date(), 'dd/MM HH:mm') : '-'}
+                       </span>
+                    </div>
+                    <p className="text-xs font-black text-slate-800 mb-1">{notif.title}</p>
+                    <p className="text-[10px] font-bold text-slate-500 leading-tight mb-2">{notif.message}</p>
+                  </div>
+                  <button 
+                    onClick={() => notificationService.markAsRead(notif.id!)}
+                    className="self-end text-[9px] font-black uppercase text-blue-600 hover:underline"
+                  >
+                    Acquitter
+                  </button>
+               </div>
+             ))}
+          </div>
+        </div>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -285,7 +349,7 @@ const Dashboard: React.FC = () => {
             <Button variant="ghost" size="sm" className="text-[10px] uppercase h-7" onClick={() => navigate('/sales-history')}>Détails</Button>
           </div>
           <div className="flex-1 overflow-y-auto">
-             {sales.slice(0, 10).map((sale) => (
+             {(sales || []).slice(0, 10).map((sale) => (
                <div key={sale.id} className="p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors flex items-start gap-3">
                   <div className="w-8 h-8 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
                     {sale.customerName?.charAt(0) || 'C'}

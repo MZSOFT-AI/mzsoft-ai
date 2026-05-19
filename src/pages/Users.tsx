@@ -41,15 +41,16 @@ import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { useNotification } from '../context/NotificationContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, safeStringify, cleanObject } from '../lib/utils';
+import { notificationService } from '../services/notificationService';
 
 const DEFAULT_PERMISSIONS: UserPermissions = {
-  canManageStock: false,
-  canDeleteProducts: false,
+  canManageStock: true,
+  canDeleteProducts: true,
   canSell: true,
-  canProcessReturns: false,
-  canPerformInventory: false,
-  canManageExpenses: false,
-  canViewReports: false,
+  canProcessReturns: true,
+  canPerformInventory: true,
+  canManageExpenses: true,
+  canViewReports: true,
   canManageUsers: false
 };
 
@@ -73,7 +74,7 @@ const Users: React.FC = () => {
     email: '',
     displayName: '',
     localPassword: '',
-    role: 'vendeur' as UserData['role'],
+    role: 'admin' as UserData['role'],
     isLocalOnly: true,
     status: 'active' as UserData['status'],
     permissions: { ...DEFAULT_PERMISSIONS }
@@ -117,7 +118,7 @@ const Users: React.FC = () => {
         email: '',
         displayName: '',
         localPassword: '',
-        role: 'vendeur',
+        role: 'admin',
         isLocalOnly: true,
         status: 'active',
         permissions: { ...DEFAULT_PERMISSIONS }
@@ -150,6 +151,22 @@ const Users: React.FC = () => {
 
         await updateDoc(userRef, cleanObject(updatedData));
         
+        // Notification
+        await notificationService.createNotification({
+          type: 'security',
+          title: 'Utilisateur Mis à Jour',
+          message: `Le compte de "${formData.displayName}" a été modifié par ${currentUser?.displayName || 'Admin'}.`,
+          priority: 'medium',
+          triggeredBy: currentUser?.uid || currentUser?.id,
+          triggeredByName: currentUser?.displayName || 'Admin',
+          metadata: {
+            entityId: editingUser.id,
+            entityType: 'user',
+            targetUserName: formData.displayName,
+            role: formData.role
+          }
+        });
+
         // Log update
         await addDoc(collection(db, 'system_logs'), {
           type: 'user_updated',
@@ -187,6 +204,22 @@ const Users: React.FC = () => {
         });
 
         await setDoc(doc(db, 'users', userId), newUser);
+
+        // Notification
+        await notificationService.createNotification({
+          type: 'user',
+          title: 'Nouveau Compte Créé',
+          message: `Un nouvel utilisateur "${formData.displayName}" (${formData.role}) a été créé par ${currentUser?.displayName || 'Admin'}.`,
+          priority: 'medium',
+          triggeredBy: currentUser?.uid || currentUser?.id,
+          triggeredByName: currentUser?.displayName || 'Admin',
+          metadata: {
+            entityId: userId,
+            entityType: 'user',
+            newUserName: formData.displayName,
+            role: formData.role
+          }
+        });
 
         // Log creation
         await addDoc(collection(db, 'system_logs'), {
@@ -262,6 +295,21 @@ const Users: React.FC = () => {
 
       await batch.commit();
       
+      // 4. Notification
+      await notificationService.createNotification({
+        type: 'deletion',
+        title: userToDelete.isLocalOnly ? 'Utilisateur Supprimé' : 'Accès Révoqué',
+        message: `Le compte de "${userToDelete.displayName}" a été ${userToDelete.isLocalOnly ? 'définitivement supprimé' : 'désactivé'} par ${currentUser.displayName || 'Admin'}.`,
+        priority: 'high',
+        triggeredBy: currentUser.uid || currentUser.id,
+        triggeredByName: currentUser.displayName || 'Admin',
+        metadata: {
+          entityId: userToDelete.id,
+          entityType: 'user',
+          targetUserName: userToDelete.displayName
+        }
+      });
+
       showToast("Utilisateur supprimé et sessions clôturées", "success");
       setIsDeleteModalOpen(false);
       setUserToDelete(null);
@@ -476,8 +524,6 @@ const Users: React.FC = () => {
                         className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
                         disabled={!isSuperAdmin && formData.role === 'superadmin'}
                       >
-                        <option value="vendeur">Vendeur</option>
-                        <option value="manager">Manager</option>
                         <option value="admin">Administrateur</option>
                         {isSuperAdmin && <option value="superadmin">Super Admin</option>}
                       </select>
@@ -649,7 +695,7 @@ const Users: React.FC = () => {
         title="Désactivation / Suppression"
         message={`Êtes-vous sûr de vouloir supprimer ou désactiver ${userToDelete?.displayName} ? Ses sessions de caisse ouvertes seront automatiquement clôturées.`}
         confirmText="Confirmer la suppression"
-        type="danger"
+        variant="danger"
         isLoading={loading}
       />
     </div>

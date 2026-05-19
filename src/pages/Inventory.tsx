@@ -11,10 +11,13 @@ import ConfirmationModal from '../components/ui/ConfirmationModal';
 import CategoryModal from '../components/CategoryModal';
 import StockInModal from '../components/StockInModal';
 import PurchaseReturnModal from '../components/PurchaseReturnModal';
+import BarcodePrintModal from '../components/BarcodePrintModal';
 import { useCollection } from '../hooks/useCollection';
 import { Product, Category, Supplier } from '../types';
 import { cn, formatCurrency, safeStringify } from '../lib/utils';
 import { motion } from 'motion/react';
+import { useNotification } from '../context/NotificationContext';
+import { notificationService } from '../services/notificationService';
 import { 
   Plus, 
   Minus,
@@ -30,7 +33,8 @@ import {
   X,
   PlusSquare,
   RotateCcw,
-  ClipboardList
+  ClipboardList,
+  Printer
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -62,16 +66,17 @@ const productSchema = z.object({
 
 type ProductFormData = z.infer<typeof productSchema>;
 
-import { useNotification } from '../context/NotificationContext';
+import { useSettings } from '../context/SettingsContext';
 
 const Inventory: React.FC = () => {
   const { showToast } = useNotification();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const { data: products } = useCollection<Product>('products', [orderBy('createdAt', 'desc')]);
   const { data: categories } = useCollection<Category>('categories', [orderBy('name')]);
   const { data: suppliers } = useCollection<Supplier>('suppliers', [orderBy('name')]);
   
-  const { user, isAdmin, hasPermission } = useAuth();
+  const { user, userData, isAdmin, hasPermission } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
   const [isStockInModalOpen, setIsStockInModalOpen] = useState(false);
@@ -88,6 +93,8 @@ const Inventory: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [productForBarcode, setProductForBarcode] = useState<Product | null>(null);
+  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -137,6 +144,18 @@ const Inventory: React.FC = () => {
           sellingPrice: data.sellingPrice, // On garde généralement le dernier prix de vente saisi
           updatedAt: new Date()
         });
+
+        if (newStock <= (duplicateProduct.minStockLevel || 5) && settings.notifyLowStock) {
+          notificationService.createNotification({
+            type: 'low_stock',
+            title: 'Stock Faible',
+            message: `Le produit "${duplicateProduct.name}" est à ${newStock} suite à un réapprovisionnement.`,
+            priority: newStock <= 0 ? 'critical' : 'medium',
+            userId: user?.uid || 'unknown',
+            userName: userData?.displayName || 'Admin',
+            metadata: { productId: duplicateProduct.id, stock: newStock }
+          });
+        }
 
         await dbService.addDocument('stock_movements', {
           productId: duplicateProduct.id,
@@ -246,6 +265,18 @@ const Inventory: React.FC = () => {
         updatedAt: new Date()
       });
 
+      if (newStock <= (product.minStockLevel || 5) && settings.notifyLowStock) {
+        notificationService.createNotification({
+          type: 'low_stock',
+          title: 'Stock Faible (Ajustement)',
+          message: `Le produit "${product.name}" est descendu à ${newStock} lors d'un ajustement manuel.`,
+          priority: newStock <= 0 ? 'critical' : 'medium',
+          userId: user?.uid || 'unknown',
+          userName: userData?.displayName || 'Admin',
+          metadata: { productId: product.id, stock: newStock }
+        });
+      }
+
       await dbService.addDocument('stock_movements', {
         productId: product.id,
         productName: product.name,
@@ -313,6 +344,21 @@ const Inventory: React.FC = () => {
       // 2. Supprimer le produit
       await dbService.deleteDocument('products', productToDelete.id);
       
+      // 3. Notification
+      await notificationService.createNotification({
+        type: 'deletion',
+        title: 'Produit Supprimé',
+        message: `Le produit "${productToDelete.name}" a été définitivement supprimé par ${userData?.displayName || user?.displayName || 'Admin'}.`,
+        priority: 'medium',
+        triggeredBy: user?.uid,
+        triggeredByName: userData?.displayName || user?.displayName || 'Admin',
+        metadata: {
+          entityId: productToDelete.id,
+          entityType: 'product',
+          productName: productToDelete.name
+        }
+      });
+
       console.log("Delete successful");
       showToast('Produit supprimé avec succès', 'success');
       setProductToDelete(null);
@@ -362,12 +408,29 @@ const Inventory: React.FC = () => {
             
             // 2. Delete
             await dbService.deleteDocument('products', id);
+            
+            // 3. Notification for each isn't ideal for bulk, but let's do a consolidated one after loop
             successCount++;
           } catch (err) {
             console.error(`Failed to delete product ${id}:`, safeStringify(err));
             failCount++;
           }
         }
+      }
+
+      if (successCount > 0) {
+        await notificationService.createNotification({
+          type: 'deletion',
+          title: 'Suppression Groupée',
+          message: `${successCount} produits ont été supprimés par ${userData?.displayName || user?.displayName || 'Admin'}.`,
+          priority: 'high',
+          triggeredBy: user?.uid,
+          triggeredByName: userData?.displayName || user?.displayName || 'Admin',
+          metadata: {
+            entityType: 'product',
+            count: successCount
+          }
+        });
       }
       
       showToast(`${successCount} produits supprimés avec success. ${failCount > 0 ? failCount + ' échecs' : ''}`, successCount > 0 ? 'success' : 'error');
@@ -415,10 +478,11 @@ const Inventory: React.FC = () => {
     link.click();
   };
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         p.barcode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         p.sku?.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredProducts = (products || []).filter(p => {
+    if (!p) return false;
+    const matchesSearch = (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         (p.barcode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         (p.sku || '').toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesCategory = selectedCategory === 'all' || p.categoryId === selectedCategory;
     
@@ -690,6 +754,22 @@ const Inventory: React.FC = () => {
                   </td>
                   <td className="text-center">
                         <div className="flex justify-center gap-2">
+                            {canManageStock && (
+                             <button 
+                               onClick={() => {
+                                 if (!product.barcode) {
+                                   showToast('Ce produit n\'a pas de code-barre configuré', 'error');
+                                   return;
+                                 }
+                                 setProductForBarcode(product);
+                                 setIsBarcodeModalOpen(true);
+                               }} 
+                               title="Imprimer Code-Barre"
+                               className="p-2 text-slate-400 hover:text-indigo-600 transition-colors hover:bg-indigo-50 rounded-lg"
+                             >
+                               <Printer size={16} />
+                             </button>
+                           )}
                            {canManageStock && (
                              <button 
                                onClick={() => handleEdit(product)} 
@@ -741,7 +821,7 @@ const Inventory: React.FC = () => {
             <div className="md:col-span-2">
               <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Nom du produit *</label>
               <input {...register('name')} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl outline-none focus:ring-2 focus:ring-slate-400 dark:text-white font-bold" />
-              {errors.name && <p className="text-rose-500 text-[10px] font-bold mt-1 uppercase">{errors.name.message}</p>}
+              {errors.name && <p className="text-rose-500 text-[10px] font-bold mt-1 uppercase">{(errors.name as any).message}</p>}
             </div>
             
             <div>
@@ -750,7 +830,7 @@ const Inventory: React.FC = () => {
                 <option value="">Sélectionner</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              {errors.categoryId && <p className="text-rose-500 text-[10px] font-bold mt-1 uppercase">{errors.categoryId.message}</p>}
+              {errors.categoryId && <p className="text-rose-500 text-[10px] font-bold mt-1 uppercase">{(errors.categoryId as any).message}</p>}
             </div>
 
             <div>
@@ -825,12 +905,12 @@ const Inventory: React.FC = () => {
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Achat</p>
                   <input type="number" step="0.01" {...register('purchasePrice', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-slate-400 dark:text-white font-bold" />
-                  {errors.purchasePrice && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.purchasePrice.message}</p>}
+                  {errors.purchasePrice && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{(errors.purchasePrice as any).message}</p>}
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Vente</p>
                   <input type="number" step="0.01" {...register('sellingPrice', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-slate-400 dark:text-white font-bold" />
-                  {errors.sellingPrice && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.sellingPrice.message}</p>}
+                  {errors.sellingPrice && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{(errors.sellingPrice as any).message}</p>}
                 </div>
               </div>
             </div>
@@ -841,12 +921,12 @@ const Inventory: React.FC = () => {
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Stock Actuel</p>
                   <input type="number" {...register('stockQuantity', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 dark:text-white font-bold" />
-                  {errors.stockQuantity && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.stockQuantity.message}</p>}
+                  {errors.stockQuantity && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{(errors.stockQuantity as any).message}</p>}
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Seuil Alerte</p>
                   <input type="number" {...register('minStockLevel', { valueAsNumber: true })} className="w-full px-4 py-2 bg-white dark:bg-slate-800 rounded-xl outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-rose-500 dark:text-white font-bold" />
-                  {errors.minStockLevel && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{errors.minStockLevel.message}</p>}
+                  {errors.minStockLevel && <p className="text-rose-500 text-[9px] font-bold mt-1 uppercase">{(errors.minStockLevel as any).message}</p>}
                 </div>
               </div>
             </div>
@@ -857,14 +937,38 @@ const Inventory: React.FC = () => {
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end gap-3">
-            <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)}>Annuler</Button>
-            <Button type="submit" size="lg" className="px-10" isLoading={isSubmitting}>
-              {editingProduct ? 'Mettre à jour' : 'Créer Produit'}
-            </Button>
+          <div className="pt-4 flex justify-between gap-3">
+            <div>
+              {editingProduct && editingProduct.barcode && (
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => {
+                    setProductForBarcode(editingProduct);
+                    setIsBarcodeModalOpen(true);
+                  }}
+                  className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                >
+                  <Printer size={18} className="mr-2" />
+                  Imprimer Code-Barre
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)}>Annuler</Button>
+              <Button type="submit" size="lg" className="px-10" isLoading={isSubmitting}>
+                {editingProduct ? 'Mettre à jour' : 'Créer Produit'}
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>
+
+      <BarcodePrintModal 
+        product={productForBarcode} 
+        isOpen={isBarcodeModalOpen} 
+        onClose={() => setIsBarcodeModalOpen(false)} 
+      />
 
       <CategoryModal isOpen={isCatModalOpen} onClose={() => setIsCatModalOpen(false)} />
       <StockInModal products={products} isOpen={isStockInModalOpen} onClose={() => setIsStockInModalOpen(false)} />
@@ -895,7 +999,7 @@ const Inventory: React.FC = () => {
             <Button variant="outline" className="flex-1" onClick={() => setProductToDelete(null)} disabled={loading}>
               Annuler
             </Button>
-            <Button className="flex-1 bg-rose-600 hover:bg-rose-700 text-white" onClick={confirmDelete} loading={loading}>
+            <Button className="flex-1 bg-rose-600 hover:bg-rose-700 text-white" onClick={confirmDelete} isLoading={loading}>
               Supprimer
             </Button>
           </div>

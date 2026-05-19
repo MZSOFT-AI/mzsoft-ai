@@ -28,7 +28,8 @@ import {
   FilePlus,
   MoreVertical,
   ChevronRight,
-  Filter
+  Filter,
+  Printer
 } from 'lucide-react';
 import { formatCurrency, cn, cleanObject } from '../lib/utils';
 import { format, addDays } from 'date-fns';
@@ -53,12 +54,25 @@ const Quotes: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  React.useEffect(() => {
+    setCustomInfoOverride(settings.customCompanyInfo || '');
+  }, [settings.customCompanyInfo]);
+
   // New Quote State
   const [cart, setCart] = useState<QuoteItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [customCustomerName, setCustomCustomerName] = useState('');
+  const [customClientInfo, setCustomClientInfo] = useState({
+    name: '',
+    phone: '',
+    address: '',
+    email: '',
+    nif: '',
+    rc: '',
+    ai: ''
+  });
   const [notes, setNotes] = useState('');
   const [discount, setDiscount] = useState(0);
+  const [customInfoOverride, setCustomInfoOverride] = useState(settings.customCompanyInfo || '');
   const [taxRate, setTaxRate] = useState((settings.taxRate || 19) / 100);
   
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.total, 0), [cart]);
@@ -119,7 +133,15 @@ const Quotes: React.FC = () => {
   const resetForm = () => {
     setCart([]);
     setSelectedCustomer(null);
-    setCustomCustomerName('');
+    setCustomClientInfo({
+      name: '',
+      phone: '',
+      address: '',
+      email: '',
+      nif: '',
+      rc: '',
+      ai: ''
+    });
     setNotes('');
     setDiscount(0);
   };
@@ -133,6 +155,8 @@ const Quotes: React.FC = () => {
     setIsSaving(true);
     try {
       const quoteNumber = `DEV-${Date.now().toString().slice(-6)}`;
+      const customerName = selectedCustomer?.name || customClientInfo.name || 'Client de passage';
+      
       const quoteData: Omit<Quote, 'id'> = {
         quoteNumber,
         items: cart,
@@ -141,13 +165,20 @@ const Quotes: React.FC = () => {
         taxRate,
         discount,
         totalAmount,
-        customerName: selectedCustomer?.name || customCustomerName || 'Client de passage',
+        customerName,
         customerId: selectedCustomer?.id || undefined,
+        customerPhone: selectedCustomer?.phone || customClientInfo.phone,
+        customerAddress: selectedCustomer?.address || customClientInfo.address,
+        customerEmail: selectedCustomer?.email || customClientInfo.email,
+        customerNIF: customClientInfo.nif,
+        customerRC: customClientInfo.rc,
+        customerAI: customClientInfo.ai,
         userId: user?.uid || userData?.id || '',
         userName: userData?.displayName || user?.displayName || 'Admin',
         status: 'draft',
         expiryDate: addDays(new Date(), 30),
         notes,
+        customCompanyInfo: customInfoOverride,
         createdAt: serverTimestamp() as any
       };
 
@@ -182,11 +213,18 @@ const Quotes: React.FC = () => {
         totalAmount: selectedQuote.totalAmount,
         customerName: selectedQuote.customerName,
         customerId: selectedQuote.customerId,
+        customerPhone: selectedQuote.customerPhone,
+        customerAddress: selectedQuote.customerAddress,
+        customerEmail: selectedQuote.customerEmail,
+        customerNIF: selectedQuote.customerNIF,
+        customerRC: selectedQuote.customerRC,
+        customerAI: selectedQuote.customerAI,
         userId: user?.uid || userData?.uid || userData?.id,
         userName: userData?.displayName || user?.displayName,
         status: 'validated',
         paymentMethod: 'cash',
         paymentStatus: 'pending',
+        customCompanyInfo: selectedQuote.customCompanyInfo,
         createdAt: serverTimestamp(),
         referenceQuoteId: selectedQuote.id
       };
@@ -237,6 +275,12 @@ const Quotes: React.FC = () => {
       date: (quote.createdAt as any)?.toDate ? (quote.createdAt as any).toDate() : (quote.createdAt instanceof Date ? quote.createdAt : new Date()),
       expiryDate: (quote.expiryDate as any)?.toDate ? (quote.expiryDate as any).toDate() : (quote.expiryDate instanceof Date ? quote.expiryDate : new Date()),
       customerName: quote.customerName || 'Client',
+      customerPhone: quote.customerPhone,
+      customerAddress: quote.customerAddress,
+      customerEmail: quote.customerEmail,
+      customerNIF: quote.customerNIF,
+      customerRC: quote.customerRC,
+      customerAI: quote.customerAI,
       items: quote.items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
       subtotal: quote.subtotal,
       taxAmount: quote.taxAmount,
@@ -244,7 +288,8 @@ const Quotes: React.FC = () => {
       discount: quote.discount,
       totalAmount: quote.totalAmount,
       userName: quote.userName || 'Admin',
-      notes: quote.notes
+      notes: quote.notes,
+      customCompanyInfo: quote.customCompanyInfo
     });
   };
 
@@ -285,6 +330,7 @@ const Quotes: React.FC = () => {
         userName: userData?.displayName || user?.displayName,
         status: 'completed',
         paymentMethod: 'cash',
+        customCompanyInfo: selectedQuote.customCompanyInfo,
         createdAt: serverTimestamp(),
         referenceQuoteId: selectedQuote.id
       };
@@ -311,6 +357,21 @@ const Quotes: React.FC = () => {
     } catch (err) {
       console.error(err);
       showToast("Erreur lors de la conversion", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateStatus = async (newState: string) => {
+    if (!selectedQuote) return;
+    setIsSaving(true);
+    try {
+      const quoteRef = doc(db, 'quotes', selectedQuote.id);
+      await updateDoc(quoteRef, { status: newState, updatedAt: serverTimestamp() });
+      showToast("Statut mis à jour", "success");
+      setIsViewModalOpen(false);
+    } catch (err) {
+      showToast("Erreur lors de la mise à jour", "error");
     } finally {
       setIsSaving(false);
     }
@@ -354,12 +415,12 @@ const Quotes: React.FC = () => {
            Array(6).fill(0).map((_, i) => (
              <div key={i} className="h-48 bg-white border border-slate-100 animate-pulse" />
            ))
-        ) : filteredQuotes.length === 0 ? (
+        ) : (filteredQuotes || []).length === 0 ? (
           <div className="col-span-full py-20 text-center bg-white border-2 border-dashed border-slate-200">
             <FilePlus size={48} className="mx-auto text-slate-300 mb-3" />
             <p className="text-slate-500 font-bold">Aucun devis trouvé.</p>
           </div>
-        ) : filteredQuotes.map((quote) => (
+        ) : (filteredQuotes || []).map((quote) => (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -399,7 +460,7 @@ const Quotes: React.FC = () => {
                   className="p-2 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors"
                   title="Imprimer PDF"
                  >
-                   <Download size={18} />
+                   <Printer size={18} />
                  </button>
                  {quote.status !== 'converted' && (
                    <div className="flex gap-1">
@@ -439,9 +500,9 @@ const Quotes: React.FC = () => {
         title="Créer un nouveau Devis"
         size="2xl"
       >
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 h-[85vh] overflow-hidden bg-white">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:h-[80vh] h-auto bg-white overflow-y-auto lg:overflow-hidden">
           {/* Left: Product Selection */}
-          <div className="lg:col-span-7 flex flex-col overflow-hidden p-6">
+          <div className="lg:col-span-7 flex flex-col lg:overflow-hidden p-4 lg:p-6 overflow-visible h-auto lg:h-full border-b lg:border-b-0">
             <div className="mb-4 space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -461,7 +522,7 @@ const Quotes: React.FC = () => {
               </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4">
+            <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4 min-h-[300px]">
               {products
                 .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
                 .slice(0, 20)
@@ -490,94 +551,162 @@ const Quotes: React.FC = () => {
           </div>
 
           {/* Right: Cart & Totals */}
-          <div className="lg:col-span-5 flex flex-col bg-slate-50 border-l border-slate-200 overflow-hidden p-6">
-            <div className="mb-6 space-y-4">
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Client</label>
-                <select 
-                  className="w-full p-3 bg-white border border-slate-200 rounded font-bold"
-                  onChange={(e) => {
-                    const c = customers.find(x => x.id === e.target.value);
-                    setSelectedCustomer(c || null);
-                  }}
-                >
-                  <option value="">Sélectionner un client...</option>
-                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                {!selectedCustomer && (
-                   <input 
-                    placeholder="Ou nom du client libre..."
-                    className="w-full p-3 bg-white border border-slate-200 rounded font-bold mt-2"
-                    value={customCustomerName}
-                    onChange={(e) => setCustomCustomerName(e.target.value)}
-                   />
-                )}
-              </div>
-            </div>
+          <div className="lg:col-span-5 flex flex-col bg-slate-50 border-l border-slate-200 lg:overflow-hidden h-full">
+               {/* Scrollable Content Area */}
+               <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 scrollbar-hide min-h-[400px]">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Client</label>
+                      <select 
+                        className="w-full p-3 bg-white border border-slate-200 rounded font-bold"
+                        onChange={(e) => {
+                          const c = customers.find(x => x.id === e.target.value);
+                          setSelectedCustomer(c || null);
+                          if (c) {
+                            setCustomClientInfo({
+                              name: c.name,
+                              phone: c.phone || '',
+                              address: c.address || '',
+                              email: c.email || '',
+                              nif: c.nif || '',
+                              rc: c.rc || '',
+                              ai: c.ai || ''
+                            });
+                          }
+                        }}
+                      >
+                        <option value="">Sélectionner un client...</option>
+                        {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
 
-            <div className="flex-1 overflow-y-auto mb-6 pr-2 space-y-3">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Sélection ({cart.length})</p>
-              {cart.map(item => (
-                <div key={item.id} className="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black uppercase truncate text-slate-800">{item.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold text-slate-500">{item.quantity} {item.unit || 'U'}</span>
-                      <span className="text-[10px] text-slate-400">x {formatCurrency(item.price)}</span>
+                      <AnimatePresence>
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          className="space-y-2 overflow-hidden mt-2"
+                        >
+                           <div className="grid grid-cols-2 gap-2">
+                              <input 
+                                placeholder="Nom/Raison Sociale" 
+                                className="p-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={customClientInfo.name}
+                                onChange={(e) => setCustomClientInfo({...customClientInfo, name: e.target.value})}
+                              />
+                              <input 
+                                placeholder="Téléphone" 
+                                className="p-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={customClientInfo.phone}
+                                onChange={(e) => setCustomClientInfo({...customClientInfo, phone: e.target.value})}
+                              />
+                           </div>
+                           <input 
+                            placeholder="Adresse Complète client" 
+                            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            value={customClientInfo.address}
+                            onChange={(e) => setCustomClientInfo({...customClientInfo, address: e.target.value})}
+                          />
+                           <div className="grid grid-cols-3 gap-2">
+                              <input 
+                                placeholder="NIF" 
+                                className="p-2 bg-white border border-slate-200 rounded-lg text-[9px] font-mono shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={customClientInfo.nif}
+                                onChange={(e) => setCustomClientInfo({...customClientInfo, nif: e.target.value})}
+                              />
+                              <input 
+                                placeholder="RC" 
+                                className="p-2 bg-white border border-slate-200 rounded-lg text-[9px] font-mono shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={customClientInfo.rc}
+                                onChange={(e) => setCustomClientInfo({...customClientInfo, rc: e.target.value})}
+                              />
+                              <input 
+                                placeholder="AI" 
+                                className="p-2 bg-white border border-slate-200 rounded-lg text-[9px] font-mono shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={customClientInfo.ai}
+                                onChange={(e) => setCustomClientInfo({...customClientInfo, ai: e.target.value})}
+                              />
+                           </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">En-tête de l'entreprise personnalisé</label>
+                      <textarea 
+                        className="w-full p-3 bg-white border border-slate-200 rounded font-medium text-xs min-h-[80px]"
+                        placeholder="Coordonnées personnalisées pour ce devis..."
+                        value={customInfoOverride}
+                        onChange={(e) => setCustomInfoOverride(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Sélection ({cart.length})</p>
+                      {cart.map(item => (
+                        <div key={item.id} className="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-black uppercase truncate text-slate-800">{item.name}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold text-slate-500">{item.quantity} {item.unit || 'U'}</span>
+                              <span className="text-[10px] text-slate-400">x {formatCurrency(item.price)}</span>
+                            </div>
+                          </div>
+                          <div className="text-right flex flex-col items-end gap-1">
+                            <p className="text-sm font-black text-slate-900">{formatCurrency(item.total)}</p>
+                            <button onClick={() => handleRemoveItem(item.id)} className="p-1 hover:bg-rose-50 rounded-full text-rose-500 transition-colors">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {cart.length === 0 && (
+                        <div className="py-10 text-center text-slate-300 text-xs italic font-bold">
+                          Aucun article sélectionné
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right flex flex-col items-end gap-1">
-                    <p className="text-sm font-black text-slate-900">{formatCurrency(item.total)}</p>
-                    <button onClick={() => handleRemoveItem(item.id)} className="p-1 hover:bg-rose-50 rounded-full text-rose-500 transition-colors">
-                      <X size={14} />
-                    </button>
+               </div>
+
+               {/* Static Footer Area */}
+               <div className="bg-white p-4 lg:p-6 border-t border-slate-200 shadow-2xl space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm font-bold text-slate-500">
+                      <span>Sous-total</span>
+                      <span>{formatCurrency(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm items-center">
+                      <span className="font-bold text-slate-500">Remise</span>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          step="100"
+                          className="w-32 p-2 text-right bg-slate-50 border border-slate-200 rounded-lg font-black text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={discount || ''}
+                          onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                        />
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase">DA</span>
+                      </div>
+                    </div>
+                    {settings.useTax && (
+                      <div className="flex justify-between text-sm font-bold text-slate-500">
+                        <span>TVA ({taxRate * 100}%)</span>
+                        <span>{formatCurrency(taxAmount)}</span>
+                      </div>
+                    )}
+                    <div className="pt-4 border-t border-slate-100 flex justify-between items-baseline">
+                      <span className="text-sm font-black uppercase tracking-widest text-slate-800">Total Devis</span>
+                      <span className="text-3xl font-black text-blue-600">{formatCurrency(totalAmount)}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {cart.length === 0 && (
-                <div className="py-10 text-center text-slate-300 text-xs italic font-bold">
-                  Aucun article sélectionné
-                </div>
-              )}
-            </div>
 
-            <div className="space-y-4 bg-white p-6 border border-slate-200 rounded-2xl shadow-inner">
-              <div className="flex justify-between text-sm font-bold text-slate-500">
-                <span>Sous-total</span>
-                <span>{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-sm items-center">
-                <span className="font-bold text-slate-500">Remise</span>
-                <div className="relative">
-                  <input 
-                    type="number" 
-                    step="100"
-                    className="w-32 p-2 text-right bg-slate-50 border border-slate-200 rounded-lg font-black text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={discount || ''}
-                    onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                  />
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase">DA</span>
-                </div>
-              </div>
-              {settings.useTax && (
-                <div className="flex justify-between text-sm font-bold text-slate-500">
-                  <span>TVA ({taxRate * 100}%)</span>
-                  <span>{formatCurrency(taxAmount)}</span>
-                </div>
-              )}
-              <div className="pt-4 border-t border-slate-100 flex justify-between items-baseline">
-                <span className="text-sm font-black uppercase tracking-widest text-slate-800">Total Devis</span>
-                <span className="text-3xl font-black text-blue-600">{formatCurrency(totalAmount)}</span>
-              </div>
-            </div>
-
-            <Button 
-              onClick={handleSaveQuote}
-              isLoading={isSaving}
-              className="w-full mt-6 h-14 bg-blue-600 hover:bg-blue-700 uppercase font-black tracking-widest text-white shadow-xl shadow-blue-100"
-            >
-              Enregistrer le Devis
-            </Button>
+                  <Button 
+                    onClick={handleSaveQuote}
+                    isLoading={isSaving}
+                    className="w-full h-14 bg-blue-600 hover:bg-blue-700 uppercase font-black tracking-widest text-white shadow-xl shadow-blue-100"
+                  >
+                    Enregistrer le Devis
+                  </Button>
+               </div>
           </div>
         </div>
       </Modal>
@@ -585,93 +714,115 @@ const Quotes: React.FC = () => {
       {/* View Detail Modal */}
       <Modal isOpen={isViewModalOpen} onClose={() => setIsViewModalOpen(false)} title="Détail du Devis" size="xl">
         {selectedQuote && (
-          <div className="space-y-6 p-8 bg-white">
-            <div className="flex justify-between border-b pb-4">
-              <div>
-                <p className="text-[10px] uppercase font-black tracking-widest text-slate-400">Numéro Devis</p>
-                <p className="text-xl font-black text-slate-900">{selectedQuote.quoteNumber}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase font-black tracking-widest text-slate-400">Date</p>
-                <p className="text-md font-bold text-slate-600">
-                   {selectedQuote.createdAt ? format((selectedQuote.createdAt as any)?.toDate ? (selectedQuote.createdAt as any).toDate() : (selectedQuote.createdAt instanceof Date ? selectedQuote.createdAt : new Date()), 'dd/MM/yyyy HH:mm') : '-'}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded border border-slate-100">
-               <p className="text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1 leading-none">Client</p>
-               <p className="text-lg font-black text-slate-800 flex items-center gap-2">
-                 <User size={18} className="text-blue-500" /> {selectedQuote.customerName}
-               </p>
-            </div>
-
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b text-slate-400 font-bold uppercase text-[10px] tracking-widest">
-                  <th className="py-2">Articles</th>
-                  <th className="py-2 text-center">Qté</th>
-                  <th className="py-2 text-right">P.U</th>
-                  <th className="py-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="font-bold">
-                {selectedQuote.items.map((item, idx) => (
-                  <tr key={idx} className="border-b border-slate-50">
-                    <td className="py-3 uppercase flex flex-col">
-                      <span>{item.name}</span>
-                      {item.isManual && <span className="text-[8px] text-rose-500 font-black">SAISIE MANUELLE</span>}
-                    </td>
-                    <td className="py-3 text-center">{item.quantity}</td>
-                    <td className="py-3 text-right">{formatCurrency(item.price)}</td>
-                    <td className="py-3 text-right text-slate-900">{formatCurrency(item.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="flex flex-col items-end space-y-2 pt-4">
-              <div className="flex justify-between w-full max-w-[200px] text-xs font-bold text-slate-500">
-                <span>Sous-total</span>
-                <span>{formatCurrency(selectedQuote.subtotal)}</span>
-              </div>
-              <div className="flex justify-between w-full max-w-[200px] text-xs font-bold text-slate-500">
-                <span>Remise</span>
-                <span>-{formatCurrency(selectedQuote.discount)}</span>
-              </div>
-              {selectedQuote.taxAmount > 0 && (
-                <div className="flex justify-between w-full max-w-[200px] text-xs font-bold text-slate-500">
-                  <span>TVA ({selectedQuote.taxRate * 100}%)</span>
-                  <span>{formatCurrency(selectedQuote.taxAmount)}</span>
+          <div className="flex flex-col max-h-[85vh]">
+            <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-6">
+              <div className="flex justify-between border-b pb-4">
+                <div>
+                  <p className="text-[10px] uppercase font-black tracking-widest text-slate-400">Numéro Devis</p>
+                  <p className="text-xl font-black text-slate-900">{selectedQuote.quoteNumber}</p>
                 </div>
-              )}
-              <div className="flex justify-between w-full max-w-[200px] pt-3 border-t text-lg font-black text-blue-600">
-                <span>TOTAL</span>
-                <span>{formatCurrency(selectedQuote.totalAmount)}</span>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase font-black tracking-widest text-slate-400">Date</p>
+                  <p className="text-md font-bold text-slate-600">
+                     {selectedQuote.createdAt ? format((selectedQuote.createdAt as any)?.toDate ? (selectedQuote.createdAt as any).toDate() : (selectedQuote.createdAt instanceof Date ? selectedQuote.createdAt : new Date()), 'dd/MM/yyyy HH:mm') : '-'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded border border-slate-100">
+                 <p className="text-[10px] uppercase font-black tracking-widest text-slate-400 mb-1 leading-none">Client</p>
+                 <p className="text-lg font-black text-slate-800 flex items-center gap-2">
+                   <User size={18} className="text-blue-500" /> {selectedQuote.customerName}
+                 </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b text-slate-400 font-bold uppercase text-[10px] tracking-widest">
+                      <th className="py-2">Articles</th>
+                      <th className="py-2 text-center">Qté</th>
+                      <th className="py-2 text-right">P.U</th>
+                      <th className="py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-bold">
+                    {selectedQuote.items.map((item, idx) => (
+                      <tr key={idx} className="border-b border-slate-50">
+                        <td className="py-3 uppercase flex flex-col">
+                          <span>{item.name}</span>
+                          {item.isManual && <span className="text-[8px] text-rose-500 font-black">SAISIE MANUELLE</span>}
+                        </td>
+                        <td className="py-3 text-center">{item.quantity}</td>
+                        <td className="py-3 text-right">{formatCurrency(item.price)}</td>
+                        <td className="py-3 text-right text-slate-900">{formatCurrency(item.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col items-end space-y-2 pt-4">
+                <div className="flex justify-between w-full max-w-[200px] text-xs font-bold text-slate-500">
+                  <span>Sous-total</span>
+                  <span>{formatCurrency(selectedQuote.subtotal)}</span>
+                </div>
+                <div className="flex justify-between w-full max-w-[200px] text-xs font-bold text-slate-500">
+                  <span>Remise</span>
+                  <span>-{formatCurrency(selectedQuote.discount)}</span>
+                </div>
+                {selectedQuote.taxAmount > 0 && (
+                  <div className="flex justify-between w-full max-w-[200px] text-xs font-bold text-slate-500">
+                    <span>TVA ({selectedQuote.taxRate * 100}%)</span>
+                    <span>{formatCurrency(selectedQuote.taxAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between w-full max-w-[200px] pt-3 border-t text-lg font-black text-blue-600">
+                  <span>TOTAL</span>
+                  <span>{formatCurrency(selectedQuote.totalAmount)}</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-3 pt-6 border-t font-black">
+            <div className="p-6 bg-slate-50 border-t flex flex-col sm:flex-row gap-3 font-black">
               <Button 
                 onClick={() => handlePrint(selectedQuote)}
-                className="flex-1 bg-slate-800 uppercase tracking-widest h-12"
+                className="flex-1 bg-slate-800 hover:bg-slate-900 text-white uppercase tracking-widest h-12"
               >
-                <Download size={18} className="mr-2" /> Télécharger / Imprimer
+                <Printer size={18} className="mr-2" /> Imprimer le Devis
               </Button>
               {selectedQuote.status !== 'converted' && (
-                <div className="flex-1 flex gap-3">
-                  <Button 
-                    onClick={() => setIsConvertModalOpen(true)}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 uppercase tracking-widest h-12 text-xs"
-                  >
-                    <ShoppingCart size={14} className="mr-2" /> Vente Directe
-                  </Button>
-                  <Button 
-                    onClick={() => setIsConvertToInvoiceModalOpen(true)}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 uppercase tracking-widest h-12 text-xs"
-                  >
-                    <FilePlus size={14} className="mr-2" /> Facturer Devis
-                  </Button>
+                <div className="flex-1 flex flex-col gap-3">
+                   {selectedQuote.status === 'draft' && (
+                     <Button 
+                        onClick={() => handleUpdateStatus('sent')}
+                        className="w-full bg-blue-500 hover:bg-blue-600 text-white uppercase tracking-widest h-10 text-[10px]"
+                     >
+                       <Clock size={14} className="mr-2" /> Marquer comme Envoyé
+                     </Button>
+                   )}
+                   {['draft', 'sent'].includes(selectedQuote.status) && (
+                     <Button 
+                        onClick={() => handleUpdateStatus('accepted')}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white uppercase tracking-widest h-10 text-[10px]"
+                     >
+                       <CheckCircle2 size={14} className="mr-2" /> Confirmer / Accepter
+                     </Button>
+                   )}
+                   <div className="flex gap-3">
+                      <Button 
+                        onClick={() => setIsConvertModalOpen(true)}
+                        className="flex-1 bg-amber-500 hover:bg-amber-600 uppercase tracking-widest h-12 text-[10px] text-white"
+                      >
+                        <ShoppingCart size={14} className="mr-2" /> Vente Directe
+                      </Button>
+                      <Button 
+                        onClick={() => setIsConvertToInvoiceModalOpen(true)}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 uppercase tracking-widest h-12 text-[10px] text-white"
+                      >
+                        <FilePlus size={14} className="mr-2" /> Facturer
+                      </Button>
+                   </div>
                 </div>
               )}
             </div>
@@ -686,7 +837,7 @@ const Quotes: React.FC = () => {
         title="Supprimer le Devis"
         message="Êtes-vous sûr de vouloir supprimer ce devis ? Cette action est irréversible."
         confirmText="Supprimer"
-        type="danger"
+        variant="danger"
       />
 
       <ConfirmationModal
@@ -696,7 +847,7 @@ const Quotes: React.FC = () => {
         title="Vente Directe"
         message={`Voulez-vous convertir le devis ${selectedQuote?.quoteNumber} en vente finale ? Le stock sera automatiquement déduit.`}
         confirmText="Confirmer la Vente"
-        type="success"
+        variant="success"
         isLoading={isSaving}
       />
 
@@ -707,7 +858,7 @@ const Quotes: React.FC = () => {
         title="Convertir en Facture"
         message={`Voulez-vous générer une facture officielle à partir du devis ${selectedQuote?.quoteNumber} ?`}
         confirmText="Générer Facture"
-        type="info"
+        variant="info"
         isLoading={isSaving}
       />
     </div>

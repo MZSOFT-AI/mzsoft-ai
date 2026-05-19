@@ -36,6 +36,7 @@ import {
 import { formatCurrency, cn, cleanObject } from '../lib/utils';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import { notificationService } from '../services/notificationService';
 
 const Invoices: React.FC = () => {
   const { user, userData } = useAuth();
@@ -57,6 +58,10 @@ const Invoices: React.FC = () => {
   const [isPreview, setIsPreview] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    setCustomInfoOverride(settings.customCompanyInfo || '');
+  }, [settings.customCompanyInfo]);
+
   // New Invoice State
   const [cart, setCart] = useState<InvoiceItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -71,6 +76,7 @@ const Invoices: React.FC = () => {
   });
   const [notes, setNotes] = useState('');
   const [discount, setDiscount] = useState(0);
+  const [customInfoOverride, setCustomInfoOverride] = useState(settings.customCompanyInfo || '');
   const [dueDate, setDueDate] = useState<string>('');
   const [amountPaidNow, setAmountPaidNow] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
@@ -166,7 +172,8 @@ const Invoices: React.FC = () => {
     try {
       const finalStatus = status === 'paid' && amountPaidNow < totalAmount ? 'pending' : status;
       const paymentStatus = amountPaidNow >= totalAmount ? 'paid' : (amountPaidNow > 0 ? 'partially_paid' : 'pending');
-
+      const customerName = selectedCustomer?.name || customClientInfo.name || 'Client de passage';
+      
       await runTransaction(db, async (transaction) => {
         let invoiceRef;
         let invoiceNumber;
@@ -218,7 +225,7 @@ const Invoices: React.FC = () => {
           totalAmount,
           amountPaid: amountPaidNow,
           balance: totalAmount - amountPaidNow,
-          customerName: selectedCustomer?.name || customClientInfo.name || 'Client de passage',
+          customerName,
           customerId: selectedCustomer?.id || undefined,
           customerPhone: selectedCustomer?.phone || customClientInfo.phone,
           customerAddress: selectedCustomer?.address || customClientInfo.address,
@@ -232,6 +239,7 @@ const Invoices: React.FC = () => {
           paymentMethod,
           paymentStatus: paymentStatus as any,
           notes,
+          customCompanyInfo: customInfoOverride,
           dueDate: dueDate ? new Date(dueDate) : undefined,
           paymentHistory: paymentRecord,
           createdAt: editingInvoiceId ? (invoices.find(i => i.id === editingInvoiceId)?.createdAt || serverTimestamp()) as any : serverTimestamp() as any,
@@ -291,7 +299,7 @@ const Invoices: React.FC = () => {
               items: cart.map(i => ({ productId: i.id, name: i.name, quantity: i.quantity, price: i.price, total: i.total })),
               totalAmount: amountPaidNow,
               paymentMethod,
-              customerName: invoiceData.customerName,
+              customerName,
               userId: invoiceData.userId,
               userName: invoiceData.userName,
               status: 'completed',
@@ -318,7 +326,25 @@ const Invoices: React.FC = () => {
 
       showToast(status === 'draft' ? "Brouillon enregistré" : "Facture validée avec succès", "success");
       
-        if (status !== 'draft') {
+      if (status !== 'draft') {
+        await notificationService.createNotification({
+          type: 'invoice',
+          title: editingInvoiceId ? 'Facture Mise à Jour' : 'Nouvelle Facture Validée',
+          message: `Facture ${finalInvoiceNumber} d'un montant de ${formatCurrency(totalAmount)} pour ${customerName}.`,
+          priority: 'medium',
+          triggeredBy: user?.uid,
+          triggeredByName: userData?.displayName || user?.displayName || 'Admin',
+          metadata: {
+            link: `/invoices`,
+            entityId: editingInvoiceId || 'new', // We don't have the new ID easily here, but that's fine for now
+            entityType: 'invoice',
+            invoiceNumber: finalInvoiceNumber,
+            totalAmount
+          }
+        });
+      }
+
+      if (status !== 'draft') {
           const fullInvoiceData = { 
             invoiceNumber: finalInvoiceNumber,
             items: cart,
@@ -340,7 +366,8 @@ const Invoices: React.FC = () => {
             dueDate: dueDate ? new Date(dueDate) : undefined,
             paymentMethod,
             userName: userData?.displayName || user?.displayName || 'Admin',
-            notes
+            notes,
+            customCompanyInfo: customInfoOverride
           };
           pdfService.generateInvoice(fullInvoiceData as any);
         }
@@ -463,7 +490,8 @@ const Invoices: React.FC = () => {
       change: invoice.change,
       paymentMethod: invoice.paymentMethod || 'cash',
       userName: invoice.userName || 'Admin',
-      notes: invoice.notes
+      notes: invoice.notes,
+      customCompanyInfo: invoice.customCompanyInfo
     });
   };
 
@@ -514,12 +542,12 @@ const Invoices: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {invoicesLoading ? (
           Array(6).fill(0).map((_, i) => <div key={i} className="h-40 bg-slate-50 animate-pulse rounded-2xl" />)
-        ) : filteredInvoices.length === 0 ? (
+        ) : (filteredInvoices || []).length === 0 ? (
           <div className="col-span-full py-20 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl">
              <FilePlus size={48} className="mx-auto text-slate-300 mb-3" />
              <p className="text-slate-500 font-bold">Aucune facture enregistrée.</p>
           </div>
-        ) : filteredInvoices.map((invoice) => (
+        ) : (filteredInvoices || []).map((invoice) => (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -706,9 +734,9 @@ const Invoices: React.FC = () => {
                               phone: cx.phone || '',
                               address: cx.address || '',
                               email: cx.email || '',
-                              nif: '',
-                              rc: '',
-                              ai: ''
+                              nif: cx.nif || '',
+                              rc: cx.rc || '',
+                              ai: cx.ai || ''
                             });
                           }
                         }}
@@ -736,6 +764,15 @@ const Invoices: React.FC = () => {
                               className="p-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
                               value={customClientInfo.phone}
                               onChange={(e) => setCustomClientInfo({...customClientInfo, phone: e.target.value})}
+                            />
+                         </div>
+                         <div>
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest pl-1">Mon En-tête (Coordonnées)</label>
+                            <textarea 
+                              placeholder="Modifier vos coordonnées pour cette facture..." 
+                              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold shadow-sm focus:ring-2 focus:ring-blue-500 outline-none min-h-[60px]"
+                              value={customInfoOverride}
+                              onChange={(e) => setCustomInfoOverride(e.target.value)}
                             />
                          </div>
                          <input 
@@ -1113,7 +1150,7 @@ const Invoices: React.FC = () => {
         title="Supprimer la Facture"
         message="Êtes-vous sûr de vouloir supprimer cette facture ? Cela n'annulera pas les mouvements de stock déjà effectués."
         confirmText="Supprimer"
-        type="danger"
+        variant="danger"
       />
     </div>
   );

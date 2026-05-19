@@ -24,6 +24,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 import { useSession } from '../context/SessionContext';
+import { notificationService } from '../services/notificationService';
 
 interface DailyClosingModalProps {
   isOpen: boolean;
@@ -90,6 +91,24 @@ const DailyClosingModal: React.FC<DailyClosingModalProps> = ({ isOpen, onClose, 
         nextSessionCash: nextSessionCash,
         closingNote: note,
       });
+
+      // Trigger notification if there is a discrepancy and settings allow it
+      if (Math.abs(difference) > 0.01 && settings.notifyCashDiscrepancy) {
+        await notificationService.createNotification({
+          type: 'cash_discrepancy',
+          title: 'Écart de Caisse Détecté',
+          message: `Un écart de ${formatCurrency(difference)} a été enregistré par ${userData?.displayName || 'Utilisateur'}.`,
+          priority: Math.abs(difference) > 100 ? 'critical' : 'high',
+          userId: user?.uid || userData?.id || 'unknown',
+          userName: userData?.displayName || 'Inconnu',
+          metadata: {
+            difference,
+            theoreticalCash,
+            actualCash: realCashCounted,
+            sessionId: activeSession?.id
+          }
+        });
+      }
 
       showToast(`Session clôturée avec succès`, 'success');
       

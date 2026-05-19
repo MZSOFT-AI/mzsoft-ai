@@ -25,7 +25,7 @@ export default function Customers() {
     return onSnapshot(
       query(collection(db, 'customers'), orderBy('name')), 
       (snapshot) => {
-        setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, 'customers');
@@ -80,13 +80,16 @@ export default function Customers() {
   );
 
   const exportToCSV = () => {
-    const headers = ['Nom', 'Code Client', 'Téléphone', 'Email', 'Adresse', 'Total Achats'];
+    const headers = ['Nom', 'Code Client', 'Téléphone', 'Email', 'Adresse', 'NIF', 'RC', 'AI', 'Total Achats'];
     const data = filtered.map(c => [
       c.name,
       c.clientCode || '',
       c.phone || '',
       c.email || '',
       `"${(c.address || '').replace(/"/g, '""')}"`,
+      c.nif || '',
+      c.rc || '',
+      c.ai || '',
       c.totalSpent || 0
     ]);
 
@@ -149,7 +152,7 @@ export default function Customers() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((client) => (
+            {(filtered || []).map((client) => (
               <tr key={client.id} className="hover:bg-blue-50 transition-colors">
                 <td>
                   <div className="flex items-center gap-3">
@@ -231,6 +234,18 @@ export default function Customers() {
              <div className="col-span-2">
                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Adresse de Facturation</label>
                 <textarea {...register('address')} rows={3} className="w-full px-4 py-2 bg-slate-50 border border-slate-300 text-sm outline-none focus:ring-1 focus:ring-blue-500 italic resize-none" />
+             </div>
+             <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">NIF (Identifiant Fiscal)</label>
+                <input {...register('nif')} className="w-full px-4 py-2 bg-slate-50 border border-slate-300 font-mono text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+             </div>
+             <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">RC (Registre Commerce)</label>
+                <input {...register('rc')} className="w-full px-4 py-2 bg-slate-50 border border-slate-300 font-mono text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+             </div>
+             <div className="col-span-2">
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">AI (Article d'Imposition)</label>
+                <input {...register('ai')} className="w-full px-4 py-2 bg-slate-50 border border-slate-300 font-mono text-sm outline-none focus:ring-1 focus:ring-blue-500" />
              </div>
           </div>
           <div className="pt-4 flex gap-2">

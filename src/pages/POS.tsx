@@ -11,6 +11,7 @@ import { useSettings } from '../context/SettingsContext';
 import { Product, Category, SaleItem, Customer } from '../types';
 import { cn, formatCurrency, cleanObject, safeStringify } from '../lib/utils';
 import { useNotification } from '../context/NotificationContext';
+import { notificationService } from '../services/notificationService';
 import { Button } from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
@@ -24,6 +25,7 @@ import {
   CreditCard, 
   Banknote, 
   ShoppingCart,
+  Barcode,
   X,
   CheckCircle2,
   Package,
@@ -43,6 +45,7 @@ import { pdfService } from '../services/pdfService';
 import { format } from 'date-fns';
 import StartSessionModal from '../components/StartSessionModal';
 import DailyClosingModal from '../components/DailyClosingModal';
+import BarcodePrintModal from '../components/BarcodePrintModal';
 
 const POS: React.FC = () => {
   const { user, userData, hasPermission } = useAuth();
@@ -51,9 +54,9 @@ const POS: React.FC = () => {
   const { showToast } = useNotification();
   const navigate = useNavigate();
 
-  const currentUid = user?.uid || userData?.id;
+  const currentUid = user?.uid || (userData && 'id' in userData ? (userData as any).id : null);
 
-  const canSell = hasPermission('canSell');
+  const canSell = hasPermission ? hasPermission('canSell') : false;
 
   if (!canSell) {
     return (
@@ -79,6 +82,7 @@ const POS: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customCustomerName, setCustomCustomerName] = useState('');
+  const [customInfoOverride, setCustomInfoOverride] = useState(settings.customCompanyInfo || '');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
@@ -89,6 +93,8 @@ const POS: React.FC = () => {
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [lastSale, setLastSale] = useState<any>(null);
   const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+  const [productForBarcode, setProductForBarcode] = useState<Product | null>(null);
+  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
   
   const { data: pendingSales } = useCollection<any>('pending_sales', currentUid ? [
     where('userId', '==', activeSession?.userId || currentUid),
@@ -106,6 +112,10 @@ const POS: React.FC = () => {
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
   
+  useEffect(() => {
+    setCustomInfoOverride(settings.customCompanyInfo || '');
+  }, [settings.customCompanyInfo]);
+
   // Refs for auto-save on unmount
   const cartRef = useRef<SaleItem[]>([]);
   const customerRef = useRef<Customer | null>(null);
@@ -174,6 +184,7 @@ const POS: React.FC = () => {
   };
 
   const filteredProducts = useMemo(() => {
+    if (!products) return [];
     return products.filter(p => {
       const pName = p.name || '';
       const pSku = p.sku || '';
@@ -307,6 +318,7 @@ const POS: React.FC = () => {
 
     setIsProcessing(true);
     const saleId = `SALE-${Date.now()}`;
+    const lowStockAlerts: any[] = [];
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -330,6 +342,17 @@ const POS: React.FC = () => {
             throw new Error(`Stock insuffisant pour ${item.name}. Disponible: ${currentStock.toFixed(2)} rolls`);
           }
           productSnapshots[item.id] = { currentStock, productData };
+          
+          // Check for low stock alert
+          const nextStock = currentStock - deductionNeeded;
+          if (nextStock <= (productData.minStockLevel || 5)) {
+            lowStockAlerts.push({
+              productId: item.id,
+              name: item.name,
+              stock: nextStock,
+              min: productData.minStockLevel || 5
+            });
+          }
         }
 
         const saleRef = doc(collection(db, 'sales'), saleId);
@@ -360,6 +383,7 @@ const POS: React.FC = () => {
           paymentMethod,
           status: 'completed' as const,
           source: 'pos',
+          customCompanyInfo: customInfoOverride || null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
@@ -392,7 +416,8 @@ const POS: React.FC = () => {
             userName: saleData.userName
           }] : [],
           createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          customCompanyInfo: customInfoOverride || null
         };
 
         transaction.set(invoiceRef, cleanObject(invoiceData));
@@ -455,6 +480,43 @@ const POS: React.FC = () => {
         }
       });
       
+      // Trigger notifications
+      if (settings.notifyLowStock && lowStockAlerts.length > 0) {
+        for (const alert of lowStockAlerts) {
+          await notificationService.createNotification({
+            type: 'low_stock',
+            title: 'Stock Faible',
+            message: `Le produit "${alert.name}" est descendu à ${alert.stock.toFixed(2)} (Seuil: ${alert.min})`,
+            priority: alert.stock <= 0 ? 'critical' : 'medium',
+            metadata: {
+               productId: alert.productId,
+               entityId: alert.productId,
+               entityType: 'product',
+               link: `/inventory?id=${alert.productId}`,
+               currentStock: alert.stock,
+               minLevel: alert.min
+            },
+            triggeredByName: 'Système Automatique'
+          });
+        }
+      }
+
+      // Create Sale Notification
+      await notificationService.createNotification({
+        type: 'sale',
+        title: 'Nouvelle Vente Enregistrée',
+        message: `Une vente de ${formatCurrency(total)} par ${userData?.displayName || user?.displayName || 'Vendeur'} vient d'être effectuée.`,
+        priority: 'low',
+        triggeredBy: user?.uid,
+        triggeredByName: userData?.displayName || user?.displayName || 'Vendeur',
+        metadata: {
+          link: '/sales-history',
+          entityId: saleId,
+          entityType: 'sale',
+          amount: total
+        }
+      });
+      
       const saleDataForInvoice = {
         invoiceNumber: saleId,
         date: new Date(),
@@ -469,11 +531,12 @@ const POS: React.FC = () => {
         receivedAmount: Number(receivedAmount) || total,
         change: change > 0 ? change : 0,
         paymentMethod,
-        userName: user?.displayName || userData?.displayName || 'Admin'
+        userName: user?.displayName || userData?.displayName || 'Admin',
+        customCompanyInfo: customInfoOverride
       };
       
       setLastSale(saleDataForInvoice);
-      pdfService.generateInvoice(saleDataForInvoice);
+      pdfService.generateReceipt(saleDataForInvoice);
       
       setCart([]);
       setDiscount(0);
@@ -786,9 +849,32 @@ const POS: React.FC = () => {
                     </span>
                   </td>
                   <td className="text-center">
-                    <button className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700">
-                      <Plus size={14} />
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!p.barcode) {
+                            showToast('Ce produit n\'a pas de code-barre', 'error');
+                            return;
+                          }
+                          setProductForBarcode(p);
+                          setIsBarcodeModalOpen(true);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                        title="Imprimer Code-Barre"
+                      >
+                        <Barcode size={14} />
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addToCart(p);
+                        }}
+                        className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -823,7 +909,7 @@ const POS: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {cart.map(item => (
+                {cart && cart.map(item => (
                   <tr key={`${item.id}-${item.unit}`}>
                     <td className="py-2">
                        <p className="font-bold text-slate-700 leading-tight">{item.name}</p>
@@ -956,6 +1042,28 @@ const POS: React.FC = () => {
               />
             </div>
           )}
+        </div>
+
+        {/* Custom Header Info Section */}
+        <div className="px-4 py-3 border-b border-slate-200 bg-white">
+          <button 
+            onClick={() => {
+              const el = document.getElementById('pos-custom-header');
+              if (el) el.classList.toggle('hidden');
+            }}
+            className="flex items-center justify-between w-full text-[10px] font-black uppercase text-slate-400 hover:text-blue-600 transition-colors tracking-widest mb-1"
+          >
+            <span>En-tête personnalisé</span>
+            <Printer size={12} />
+          </button>
+          <div id="pos-custom-header" className="hidden animate-in fade-in slide-in-from-top-1 duration-200">
+            <textarea 
+              value={customInfoOverride}
+              onChange={(e) => setCustomInfoOverride(e.target.value)}
+              className="w-full mt-2 p-2 border border-slate-200 text-[10px] font-medium min-h-[60px] bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-blue-500 rounded"
+              placeholder="Modifier les coordonnées pour cette vente..."
+            />
+          </div>
         </div>
 
         {/* Totals Section */}
@@ -1246,7 +1354,7 @@ const POS: React.FC = () => {
       <ConfirmationModal
         isOpen={!!pendingToRecall}
         onClose={() => setPendingToRecall(null)}
-        onConfirm={() => confirmRecall()}
+        onConfirm={() => confirmRecall(pendingToRecall)}
         title="Récupérer une vente"
         message="Le panier actuel sera remplacé par la vente en instance. Continuer ?"
         confirmText="Remplacer le panier"
@@ -1295,6 +1403,12 @@ const POS: React.FC = () => {
         inputType="number"
         inputPlaceholder="Ex: 50.5"
         confirmText="Ajouter au Panier"
+      />
+
+      <BarcodePrintModal 
+        product={productForBarcode}
+        isOpen={isBarcodeModalOpen}
+        onClose={() => setIsBarcodeModalOpen(false)}
       />
     </div>
   );

@@ -29,6 +29,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn, formatCurrency, safeStringify } from '../lib/utils';
 import { useNotification } from '../context/NotificationContext';
+import { useSettings } from '../context/SettingsContext';
+import { notificationService } from '../services/notificationService';
 import { useCollection } from '../hooks/useCollection';
 import { Product, Category } from '../types';
 
@@ -48,6 +50,7 @@ const InventoryAuditDetails: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const { showToast } = useNotification();
+  const { settings } = useSettings();
   
   const [audit, setAudit] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -159,6 +162,24 @@ const InventoryAuditDetails: React.FC = () => {
         totalDiscrepancyValue,
         completedAt: serverTimestamp()
       });
+
+      // Trigger notification if there are discrepancies and settings allow it
+      if (stats.discrepancies > 0 && settings.notifyStockDiscrepancy) {
+        await notificationService.createNotification({
+          type: 'stock_discrepancy',
+          title: 'Écart de Stock Détecté',
+          message: `${stats.discrepancies} écart(s) de stock enregistrés lors de l'inventaire ${audit.type}. Valeur: ${formatCurrency(stats.totalVal)}`,
+          priority: Math.abs(stats.totalVal) > 1000 ? 'critical' : 'high',
+          userId: user?.uid || 'unknown',
+          userName: user?.displayName || 'Admin',
+          metadata: {
+            auditId: id,
+            auditType: audit.type,
+            discrepanciesCount: stats.discrepancies,
+            totalValue: stats.totalVal
+          }
+        });
+      }
 
       showToast("Inventaire clôturé avec succès. Stocks mis à jour.", "success");
       navigate('/inventory/audits');

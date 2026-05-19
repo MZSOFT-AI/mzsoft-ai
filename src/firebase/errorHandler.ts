@@ -25,6 +25,8 @@ export interface FirestoreErrorInfo {
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   let errorMessage = 'Unknown error';
+  
+  // Extract a readable message first
   if (error instanceof Error) {
     errorMessage = error.message;
   } else if (typeof error === 'string') {
@@ -37,19 +39,30 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     }
   }
 
-  const errInfo: any = {
+  // Create minimal errInfo for logging
+  const errInfo = {
     error: errorMessage,
     operationType,
     path,
     timestamp: new Date().toISOString(),
-    authInfo: {
-      userId: auth.currentUser?.uid || null,
+    auth: {
+      uid: auth.currentUser?.uid || null,
       email: auth.currentUser?.email || null,
-      emailVerified: auth.currentUser?.emailVerified || null,
     }
   };
   
-  const jsonStr = safeStringify(errInfo);
-  console.error('Firestore Error:', jsonStr);
-  throw new Error(jsonStr);
+  try {
+    const jsonStr = safeStringify(errInfo);
+    console.error('Firestore Error Details:', jsonStr);
+  } catch (e) {
+    console.error('Firestore Error (Raw):', errorMessage);
+  }
+
+  // Throw a standard error with just the message
+  // This prevents global handlers from choking on massive JSON strings if they try to stringify
+  const finalError = new Error(errorMessage);
+  (finalError as any).operationType = operationType;
+  (finalError as any).path = path;
+  
+  throw finalError;
 }

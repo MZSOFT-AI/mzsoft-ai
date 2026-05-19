@@ -534,6 +534,22 @@ export default function Settings() {
                         </div>
                       </div>
 
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                          Coordonnées / Informations personnalisées
+                          <Badge variant="outline" className="text-[9px] uppercase">Flexible</Badge>
+                        </label>
+                        <textarea
+                          value={businessForm.customCompanyInfo || ''}
+                          onChange={(e) => setBusinessForm({...businessForm, customCompanyInfo: e.target.value})}
+                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border-none rounded-xl focus:ring-2 focus:ring-blue-500 font-medium min-h-[160px] text-sm"
+                          placeholder="Nom société, adresse, contacts, RC/NIF, remarques, message client... (Apparaîtra sur les factures et tickets)"
+                        />
+                        <p className="text-[10px] text-slate-400 font-medium italic">
+                          Supporte les accents, l'Arabe et le Français. Ce texte sera utilisé par défaut sur vos documents.
+                        </p>
+                      </div>
+
                       <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl space-y-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -600,7 +616,21 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+                    <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+                      <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                        <FileText size={14} />
+                        Coordonnées / Informations personnalisées (Header Document)
+                      </label>
+                      <textarea
+                        value={businessForm.customCompanyInfo || ''}
+                        onChange={(e) => setBusinessForm({...businessForm, customCompanyInfo: e.target.value})}
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-blue-500 font-medium min-h-[150px] leading-relaxed"
+                        placeholder="Écrivez ici vos coordonnées complètes, RC, NIF, NIS, conditions, ou tout autre texte que vous souhaitez voir apparaître en haut de vos documents..."
+                      />
+                      <p className="text-[10px] text-slate-400 italic">Ce texte sera affiché en haut de vos factures, devis et tickets. Supporte plusieurs lignes.</p>
+                    </div>
+
+                    <div className="space-y-4 pt-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Texte de pied de page (Tickets / Factures)</label>
                     <div className="relative">
                       <FileText className="absolute left-3 top-3 text-slate-400" size={18} />
@@ -614,6 +644,146 @@ export default function Settings() {
                     <p className="text-[10px] text-slate-400 italic">Ce texte sera affiché sur tous vos tickets de caisse, factures et devis générés.</p>
                   </div>
                 </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTab === 'notifications' && (
+            <Card className="border-slate-200 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <CardHeader className="border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                    <Bell size={20} className="text-amber-600" />
+                  </div>
+                  <CardTitle>Alertes & Notifications</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="p-8 space-y-6">
+                <p className="text-sm text-slate-500 mb-6">
+                  Configurez les alertes automatiques envoyées aux Administrateurs et Super Admins pour les événements critiques.
+                </p>
+
+                <div className="space-y-4">
+                  {/* Low Stock Alert */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg">
+                        <AlertTriangle size={18} className="text-rose-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tighter">Stock en Alerte</p>
+                        <p className="text-xs text-slate-500">Notifier quand un produit descend en dessous du seuil minimum.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ notifyLowStock: !settings.notifyLowStock })}
+                      className={`w-12 h-6 rounded-full relative transition-all shadow-inner ${
+                        settings.notifyLowStock ? 'bg-emerald-500 shadow-emerald-900' : 'bg-slate-300 shadow-slate-400'
+                      }`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                        settings.notifyLowStock ? 'right-1' : 'left-1'
+                      }`}></div>
+                    </button>
+                  </div>
+
+                  {/* Stock Discrepancy Alert */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                        <RefreshCcw size={18} className="text-amber-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tighter">Écarts de Stock</p>
+                        <p className="text-xs text-slate-500">Notifier lors d'écarts constatés pendant l'inventaire.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ notifyStockDiscrepancy: !settings.notifyStockDiscrepancy })}
+                      className={`w-12 h-6 rounded-full relative transition-all shadow-inner ${
+                        settings.notifyStockDiscrepancy ? 'bg-emerald-500 shadow-emerald-900' : 'bg-slate-300 shadow-slate-400'
+                      }`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                        settings.notifyStockDiscrepancy ? 'right-1' : 'left-1'
+                      }`}></div>
+                    </button>
+                  </div>
+
+                  {/* Cash Discrepancy Alert */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+                        <Coins size={18} className="text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tighter">Écarts de Caisse</p>
+                        <p className="text-xs text-slate-500">Notifier en cas d'écart de caisse lors de la clôture par un vendeur.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ notifyCashDiscrepancy: !settings.notifyCashDiscrepancy })}
+                      className={`w-12 h-6 rounded-full relative transition-all shadow-inner ${
+                        settings.notifyCashDiscrepancy ? 'bg-emerald-500 shadow-emerald-900' : 'bg-slate-300 shadow-slate-400'
+                      }`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                        settings.notifyCashDiscrepancy ? 'right-1' : 'left-1'
+                      }`}></div>
+                    </button>
+                  </div>
+
+                  {/* Sound Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                        <Monitor size={18} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tighter">Sons de Notification</p>
+                        <p className="text-xs text-slate-500">Jouer un signal sonore à chaque nouvelle alerte.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ notificationSound: !settings.notificationSound })}
+                      className={`w-12 h-6 rounded-full relative transition-all shadow-inner ${
+                        settings.notificationSound ? 'bg-blue-500 shadow-blue-900' : 'bg-slate-300 shadow-slate-400'
+                      }`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                        settings.notificationSound ? 'right-1' : 'left-1'
+                      }`}></div>
+                    </button>
+                  </div>
+
+                  {/* Desktop Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                        <Shield size={18} className="text-slate-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tighter">Notifications Bureau</p>
+                        <p className="text-xs text-slate-500">Activer les notifications natives du système (Electron/Browser).</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ desktopNotifications: !settings.desktopNotifications })}
+                      className={`w-12 h-6 rounded-full relative transition-all shadow-inner ${
+                        settings.desktopNotifications ? 'bg-blue-600 shadow-blue-900' : 'bg-slate-300 shadow-slate-400'
+                      }`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                        settings.desktopNotifications ? 'right-1' : 'left-1'
+                      }`}></div>
+                    </button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -830,7 +1000,7 @@ export default function Settings() {
             </Card>
           )}
 
-          {(activeTab !== 'profile' && activeTab !== 'security' && activeTab !== 'users' && activeTab !== 'system') && (
+          {(activeTab !== 'profile' && activeTab !== 'security' && activeTab !== 'users' && activeTab !== 'system' && activeTab !== 'notifications' && activeTab !== 'business') && (
             <Card className="border-slate-200 dark:border-slate-800">
               <CardContent className="p-20 text-center text-slate-400">
                 <SettingsIcon size={48} className="mx-auto mb-4 opacity-10 animate-spin-slow" />
