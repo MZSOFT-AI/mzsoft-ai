@@ -8,9 +8,10 @@ import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { pdfService } from '../services/pdfService';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter, ShoppingCart, Users, Layers } from 'lucide-react';
+import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter, ShoppingCart, Users, Layers, Download } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import * as XLSX from 'xlsx';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import PromptModal from '../components/ui/PromptModal';
@@ -296,6 +297,48 @@ export default function SalesHistory() {
     }
   };
 
+  const handleExportSalesExcel = () => {
+    try {
+      const wb = XLSX.utils.book_new();
+      
+      const salesData = filteredSales.map(s => ({
+        'ID Vente': s.id,
+        'Date': s.createdAt ? format(getSafeDate(s.createdAt), 'dd/MM/yyyy HH:mm', { locale: fr }) : '-',
+        'Source': s.source === 'invoice' ? 'Facture' : s.source === 'quote' ? 'Devis' : 'Caisse',
+        'Vendeur': s.userName || 'Admin',
+        'Client': s.customerName || 'Client de passage',
+        'Montant Total (DA)': s.totalAmount,
+        'Méthode': s.paymentMethod || 'Espèces',
+        'Statut': s.status === 'returned' ? 'Annulé' : (s.status === 'partially_returned' ? 'Partiel' : 'Validé'),
+        'NB Articles': s.items?.length || 0,
+        'Articles': (s.items || []).map((i: any) => `${i.name} (${i.quantity})`).join(', ')
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(salesData);
+      
+      // Professional layout - set widths
+      ws['!cols'] = [
+        { wch: 25 }, // ID
+        { wch: 18 }, // Date
+        { wch: 10 }, // Source
+        { wch: 15 }, // Vendeur
+        { wch: 20 }, // Client
+        { wch: 18 }, // Montant
+        { wch: 12 }, // Méthode
+        { wch: 12 }, // Statut
+        { wch: 10 }, // NB Articles
+        { wch: 50 }  // Liste Articles
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, "Historique des Ventes");
+      
+      XLSX.writeFile(wb, `Historique_Ventes_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+    } catch (error) {
+      console.error('Export Error:', error);
+      showToast("Erreur lors de l'export Excel", "error");
+    }
+  };
+
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case 'returned': return <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-rose-50 text-rose-500 border border-rose-100 italic">Annulée</span>;
@@ -480,6 +523,9 @@ export default function SalesHistory() {
         <div className="flex gap-2 mt-4 md:mt-0">
            <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={() => setShowSearchById(true)}>
              <RotateCcw size={16} className="mr-2" /> Effectuer un Retour
+           </Button>
+           <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" onClick={handleExportSalesExcel}>
+             <Download size={16} className="mr-2" /> Export Excel Pro
            </Button>
            <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase" onClick={() => window.location.reload()}>
              <History size={16} className="mr-2 text-slate-400" /> Journal

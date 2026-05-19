@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCollection } from '../hooks/useCollection';
-import { Quote, Product, Customer, QuoteItem } from '../types';
+import { Quote, Product, Customer, QuoteItem, Project } from '../types';
 import { dbService } from '../firebase/db';
 import { orderBy, serverTimestamp, addDoc, collection, doc, updateDoc, writeBatch, increment } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -43,6 +43,7 @@ const Quotes: React.FC = () => {
   const { data: quotes, loading: quotesLoading } = useCollection<Quote>('quotes', [orderBy('createdAt', 'desc')]);
   const { data: products } = useCollection<Product>('products', [orderBy('name')]);
   const { data: customers } = useCollection<Customer>('customers', [orderBy('name')]);
+  const { data: projects } = useCollection<Project>('projects', [orderBy('name')]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -61,6 +62,7 @@ const Quotes: React.FC = () => {
   // New Quote State
   const [cart, setCart] = useState<QuoteItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [customClientInfo, setCustomClientInfo] = useState({
     name: '',
     phone: '',
@@ -144,6 +146,7 @@ const Quotes: React.FC = () => {
     });
     setNotes('');
     setDiscount(0);
+    setSelectedProject(null);
   };
 
   const handleSaveQuote = async () => {
@@ -173,6 +176,8 @@ const Quotes: React.FC = () => {
         customerNIF: customClientInfo.nif,
         customerRC: customClientInfo.rc,
         customerAI: customClientInfo.ai,
+        projectId: selectedProject?.id || undefined,
+        projectName: selectedProject?.name || undefined,
         userId: user?.uid || userData?.id || '',
         userName: userData?.displayName || user?.displayName || 'Admin',
         status: 'draft',
@@ -219,6 +224,8 @@ const Quotes: React.FC = () => {
         customerNIF: selectedQuote.customerNIF,
         customerRC: selectedQuote.customerRC,
         customerAI: selectedQuote.customerAI,
+        projectId: selectedQuote.projectId || null,
+        projectName: selectedQuote.projectName || null,
         userId: user?.uid || userData?.uid || userData?.id,
         userName: userData?.displayName || user?.displayName,
         status: 'validated',
@@ -326,6 +333,8 @@ const Quotes: React.FC = () => {
         discount: selectedQuote.discount,
         customerName: selectedQuote.customerName,
         customerId: selectedQuote.customerId,
+        projectId: selectedQuote.projectId || null,
+        projectName: selectedQuote.projectName || null,
         userId: user?.uid || userData?.uid || userData?.id,
         userName: userData?.displayName || user?.displayName,
         status: 'completed',
@@ -628,6 +637,21 @@ const Quotes: React.FC = () => {
                            </div>
                         </motion.div>
                       </AnimatePresence>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Rattachement Chantier</label>
+                      <select 
+                        className="w-full p-3 bg-white border border-slate-200 rounded font-bold"
+                        value={selectedProject?.id || ''}
+                        onChange={(e) => {
+                          const p = projects.find(x => x.id === e.target.value);
+                          setSelectedProject(p || null);
+                        }}
+                      >
+                        <option value="">Aucun Chantier associé</option>
+                        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
                     </div>
 
                     <div>

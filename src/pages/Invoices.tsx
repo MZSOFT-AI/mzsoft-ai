@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCollection } from '../hooks/useCollection';
-import { Invoice, Product, Customer, InvoiceItem, Quote, PaymentRecord } from '../types';
+import { Invoice, Product, Customer, InvoiceItem, Quote, PaymentRecord, Project } from '../types';
 import { dbService } from '../firebase/db';
 import { orderBy, serverTimestamp, addDoc, collection, doc, writeBatch, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -47,6 +47,7 @@ const Invoices: React.FC = () => {
   const { data: invoices, loading: invoicesLoading } = useCollection<Invoice>('invoices', [orderBy('createdAt', 'desc')]);
   const { data: products } = useCollection<Product>('products', [orderBy('name')]);
   const { data: customers } = useCollection<Customer>('customers', [orderBy('name')]);
+  const { data: projects } = useCollection<Project>('projects', [orderBy('name')]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -65,6 +66,7 @@ const Invoices: React.FC = () => {
   // New Invoice State
   const [cart, setCart] = useState<InvoiceItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [customClientInfo, setCustomClientInfo] = useState({
     name: '',
     phone: '',
@@ -157,6 +159,7 @@ const Invoices: React.FC = () => {
     setDiscount(0);
     setDueDate('');
     setPaymentMethod('cash');
+    setSelectedProject(null);
     setIsPreview(false);
     setEditingInvoiceId(null);
   };
@@ -233,6 +236,8 @@ const Invoices: React.FC = () => {
           customerNIF: customClientInfo.nif, 
           customerRC: customClientInfo.rc,
           customerAI: customClientInfo.ai,
+          projectId: selectedProject?.id || undefined,
+          projectName: selectedProject?.name || undefined,
           userId: user?.uid || userData?.uid || userData?.id || '',
           userName: userData?.displayName || user?.displayName || 'Admin',
           status: finalStatus as any,
@@ -300,6 +305,8 @@ const Invoices: React.FC = () => {
               totalAmount: amountPaidNow,
               paymentMethod,
               customerName,
+              projectId: selectedProject?.id || null,
+              projectName: selectedProject?.name || null,
               userId: invoiceData.userId,
               userName: invoiceData.userName,
               status: 'completed',
@@ -435,6 +442,8 @@ const Invoices: React.FC = () => {
           totalAmount: paymentRecordAmount,
           paymentMethod: paymentRecordMethod,
           customerName: invData.customerName,
+          projectId: invData.projectId || null,
+          projectName: invData.projectName || null,
           userId: user?.uid || '',
           userName: userData?.displayName || 'Vendeur',
           status: 'completed',
@@ -743,6 +752,21 @@ const Invoices: React.FC = () => {
                       >
                         <option value="">Client de passage</option>
                         {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Rattachement Chantier</label>
+                      <select 
+                        className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold shadow-sm text-sm"
+                        value={selectedProject?.id || ''}
+                        onChange={(e) => {
+                          const p = projects.find(x => x.id === e.target.value);
+                          setSelectedProject(p || null);
+                        }}
+                      >
+                        <option value="">Aucun Chantier associé</option>
+                        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                     </div>
 

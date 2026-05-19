@@ -17,6 +17,7 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn, cleanObject } from '../lib/utils';
+import { excelService } from '../services/excelService';
 import PromptModal from '../components/ui/PromptModal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 
@@ -140,6 +141,9 @@ export default function StockMovements() {
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Audit logistique & traçabilité</p>
         </div>
         <div className="flex gap-2 mt-4 md:mt-0">
+           <Button variant="outline" size="sm" className="h-9 border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-bold uppercase" onClick={handleExportMovements}>
+             <ArrowDown size={16} className="mr-2" /> Rapport Excel Pro
+           </Button>
            <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase" onClick={() => window.location.reload()}>
              <History size={16} className="mr-2 text-slate-400" /> Historique
            </Button>

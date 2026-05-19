@@ -27,15 +27,15 @@ const Sidebar: React.FC = () => {
     },
     {
       title: 'Gestion Commerciale',
-      items: ['quotes', 'invoices', 'customers']
+      items: ['quotes', 'invoices', 'customers', 'projects']
     },
     {
       title: 'Stock & Logistique',
       items: ['inventory', 'inventory-audits', 'stock-movements', 'categories', 'suppliers']
     },
     {
-      title: 'Finances',
-      items: ['expenses', 'cash-history']
+      title: 'Entreprise & RH',
+      items: ['employees', 'expenses', 'cash-history']
     },
     {
       title: 'Configuration',
@@ -60,6 +60,8 @@ const Sidebar: React.FC = () => {
       case 'users': return isAdmin; // Fixed: using isAdmin instead of isSuperAdmin based on user request
       case 'quotes': return true;
       case 'invoices': return hasPermission('canSell');
+      case 'projects': return true;
+      case 'employees': return isAdmin;
       case 'reports': return hasPermission('canViewReports');
       case 'settings': return isAdmin; // Fixed: using isAdmin instead of isSuperAdmin
       default: return true;

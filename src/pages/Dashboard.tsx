@@ -7,6 +7,7 @@ import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Sale, Product, AppNotification } from '../types';
 import { formatCurrency, cn, safeStringify } from '../lib/utils';
+import { excelService } from '../services/excelService';
 import { 
   TrendingUp, 
   Box, 
@@ -178,6 +179,32 @@ const Dashboard: React.FC = () => {
     return last12Months.map(month => ({ name: month, amount: monthlyData[month] }));
   }, [sales]);
 
+  const handleExportDashboard = async () => {
+    try {
+      const data = [
+        { label: "Chiffre d'Affaires", value: statsData.monthlyRevenue, unit: "DA" },
+        { label: "Total Ventes", value: statsData.totalSales, unit: "Docs" },
+        { label: "Total Produits", value: statsData.totalProducts, unit: "u" },
+        { label: "Total Clients", value: statsData.totalCustomers, unit: "pers." },
+        { label: "Alertes Stock", value: statsData.lowStock, unit: "items" }
+      ];
+
+      await excelService.generateProfessionalReport({
+        filename: `Dashboard_Report_${format(new Date(), 'yyyyMMdd')}`,
+        title: 'RAPPORT DE PERFORMANCE - TABLEAU DE BORD',
+        subtitle: `Résumé opérationnel au ${format(new Date(), 'dd/MM/yyyy HH:mm')}`,
+        columns: [
+          { header: 'Indicateur', key: 'label', width: 40 },
+          { header: 'Valeur', key: 'value', width: 25 },
+          { header: 'Unité', key: 'unit', width: 10 }
+        ],
+        data
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* ERP Header */}
@@ -190,6 +217,9 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-2 mt-4 md:mt-0">
+           <Button variant="outline" size="sm" className="h-10 text-xs font-bold uppercase border-emerald-200 bg-emerald-50 text-emerald-700" onClick={handleExportDashboard}>
+             <TrendingUp size={16} className="mr-2" /> Rapport Excel Pro
+           </Button>
            <Button variant="outline" size="sm" className="h-10 text-xs font-bold uppercase" onClick={() => window.location.reload()}>
              <RefreshCw size={16} className="mr-2 text-slate-400" /> Rafraîchir
            </Button>

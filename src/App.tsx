@@ -31,6 +31,8 @@ const Settings = React.lazy(() => import('./pages/Settings'));
 const Users = React.lazy(() => import('./pages/Users'));
 const Quotes = React.lazy(() => import('./pages/Quotes'));
 const Invoices = React.lazy(() => import('./pages/Invoices'));
+const Projects = React.lazy(() => import('./pages/Projects'));
+const Employees = React.lazy(() => import('./pages/Employees'));
 const InventoryAudits = React.lazy(() => import('./pages/InventoryAudits'));
 const InventoryAuditDetails = React.lazy(() => import('./pages/InventoryAuditDetails'));
 const Notifications = React.lazy(() => import('./pages/Notifications'));
@@ -94,6 +96,8 @@ export default function App() {
                           <Route path="users" element={<Users />} />
                           <Route path="quotes" element={<Quotes />} />
                           <Route path="invoices" element={<Invoices />} />
+                          <Route path="projects" element={<Projects />} />
+                          <Route path="employees" element={<Employees />} />
                           <Route path="notifications" element={<Notifications />} />
                           <Route path="settings" element={<Settings />} />
                         </Route>

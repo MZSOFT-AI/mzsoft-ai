@@ -133,6 +133,8 @@ export interface Quote extends BaseEntity {
   customerAI?: string;
   userId: string;
   userName?: string;
+  projectId?: string;
+  projectName?: string;
   status: 'draft' | 'sent' | 'accepted' | 'converted' | 'expired';
   expiryDate?: Timestamp | Date;
   notes?: string;
@@ -161,6 +163,8 @@ export interface Invoice extends BaseEntity {
   customerAI?: string;
   userId: string;
   userName?: string;
+  projectId?: string;
+  projectName?: string;
   status: 'draft' | 'validated' | 'paid' | 'cancelled' | 'pending';
   paymentMethod?: 'cash' | 'card' | 'transfer';
   paymentStatus: 'pending' | 'partially_paid' | 'paid';
@@ -185,10 +189,51 @@ export interface Sale extends BaseEntity {
   totalAmount: number;
   paymentMethod: 'cash' | 'card' | 'transfer';
   customerName?: string;
+  customerId?: string;
+  projectId?: string;
+  projectName?: string;
   userId: string;
   userName?: string;
   status?: 'completed' | 'partially_returned' | 'returned';
   customCompanyInfo?: string;
+}
+
+export interface Project extends BaseEntity {
+  name: string;
+  location?: string;
+  clientId?: string;
+  clientName?: string;
+  status: 'planning' | 'active' | 'suspended' | 'completed' | 'cancelled';
+  startDate?: Timestamp | Date;
+  endDate?: Timestamp | Date;
+  budget?: number;
+  description?: string;
+  managerId?: string;
+  managerName?: string;
+}
+
+export interface Employee extends BaseEntity {
+  name: string;
+  role: string;
+  phone?: string;
+  salaryBasis: 'daily' | 'monthly' | 'fixed';
+  rate: number;
+  isActive: boolean;
+}
+
+export interface ProjectPayment extends BaseEntity {
+  employeeId: string;
+  employeeName: string;
+  projectId: string;
+  projectName: string;
+  docId?: string; // N° Bon, Facture, or Devis
+  amount: number;
+  date: Timestamp | Date;
+  type: 'salary' | 'advance' | 'bonus' | 'expense';
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
+  notes?: string;
+  createdBy: string;
+  createdByName?: string;
 }
 
 export interface Supplier extends BaseEntity {

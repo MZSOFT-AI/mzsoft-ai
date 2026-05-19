@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
@@ -37,7 +37,7 @@ import {
   Activity,
   History as HistoryIcon
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { excelService } from '../services/excelService';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
@@ -177,7 +177,7 @@ export default function Reports() {
   const handleTraceSearch = () => {
     if (!traceSearch.trim()) return;
     const term = traceSearch.toLowerCase();
-    const results = movements.filter(m => 
+    const results = movements.filter((m: any) => 
       m.batchNumber?.toLowerCase().includes(term) || 
       m.productName.toLowerCase().includes(term) ||
       m.productId.toLowerCase().includes(term) ||
@@ -186,25 +186,126 @@ export default function Reports() {
     setTraceResults(results);
   };
 
-  const exportValuationToExcel = () => {
-    const wsData = products.map(p => ({
-      Designation: p.name,
-      SKU: p.sku,
-      Stock: p.stockQuantity,
-      'Prix Achat (DA)': p.purchasePrice,
-      'Prix Vente (DA)': p.sellingPrice,
-      'Valeur Achat Totale': p.stockQuantity * p.purchasePrice,
-      'Valeur Vente Totale': p.stockQuantity * p.sellingPrice,
-      'Marge Potentielle': (p.stockQuantity * p.sellingPrice) - (p.stockQuantity * p.purchasePrice)
-    }));
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Valorisation Stock");
-    XLSX.writeFile(wb, `Valorisation_Stock_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+  const handleGlobalExport = async () => {
+    try {
+      // 1. Prepare Overview Data
+      const overviewData = [
+        { label: "Chiffre d'Affaires Brut", value: totalRevenue, unit: "DA" },
+        { label: "Panier Moyen Client", value: avgTicket, unit: "DA" },
+        { label: "Volume des Ventes", value: sales.length, unit: "Docs" },
+        { label: "Unités en Stock", value: totalStockItems, unit: "u" },
+        { label: "Valeur d'Achat Total", value: totalPurchaseValue, unit: "DA" },
+        { label: "Valeur de Revente Total", value: totalResaleValue, unit: "DA" },
+        { label: "Profit Latent", value: potentialProfit, unit: "DA" }
+      ];
+
+      await excelService.generateProfessionalReport({
+        filename: `Rapport_Business_ERP_${format(new Date(), 'yyyyMMdd')}`,
+        title: 'RAPPORT ANALYTIQUE GLOBAL - BUSINESS INTELLIGENCE',
+        subtitle: `Analyse consolidée au ${format(new Date(), 'dd/MM/yyyy HH:mm')}`,
+        columns: [
+          { header: 'Indicateur de Performance', key: 'label', width: 40 },
+          { header: 'Valeur Mesurée', key: 'value', width: 25 },
+          { header: 'Unité', key: 'unit', width: 10 }
+        ],
+        data: overviewData
+      });
+      
+      // Optionally could add more sheets or separate files. For now let's make it one robust file or multiple clicks.
+      // But user wants "Contenu de la page exemple vue d'ensemble et valorisation..."
+      // The current excelService only does one sheet. I should probably expand excelService to handle multi-sheet or just do it manually with ExcelJS if needed.
+      // Given the instruction "professionnel", let's make a multi-sheet one manually in Reports.tsx but inspired by excelService.
+      
+      const workbook = new excelService.workbookInstance ? null : await generateMultiSheetReport();
+      
+    } catch (error) {
+      console.error('Export Error:', error);
+    }
+  };
+
+  const generateMultiSheetReport = async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const { saveAs } = await import('file-saver');
+    const workbook = new ExcelJS.Workbook();
+    
+    // SHEET 1: OVERVIEW
+    const sheet1 = workbook.addWorksheet('Vue d\'ensemble');
+    sheet1.addRow(['RÉSUMÉ EXÉCUTIF']).font = { bold: true, size: 14 };
+    sheet1.addRow([`Date: ${format(new Date(), 'dd/MM/yyyy')}`]);
+    sheet1.addRow([]);
+    sheet1.addRow(['Indicateur', 'Valeur', 'Détails']);
+    sheet1.addRow(['Chiffre d\'Affaires', totalRevenue, 'Cumul ventes']);
+    sheet1.addRow(['Panier Moyen', avgTicket, 'Moyenne/Ticket']);
+    sheet1.addRow(['Volume Ventes', sales.length, 'Transactions']);
+    sheet1.addRow(['Valorisation Stock (Achat)', totalPurchaseValue, 'Capital immobilisé']);
+    sheet1.addRow(['Valorisation Stock (Vente)', totalResaleValue, 'Chiffre d\'affaires potentiel']);
+    sheet1.columns = [{ width: 30 }, { width: 25 }, { width: 30 }];
+
+    // SHEET 2: VALORISATION
+    const sheet2 = workbook.addWorksheet('Valorisation Stock');
+    sheet2.addRow(['DÉTAIL VALORISATION STOCKS']).font = { bold: true };
+    sheet2.addRow(['Produit', 'SKU', 'Stock', 'Prix Achat', 'Prix Vente', 'Valeur Achat', 'Valeur Vente', 'Marge']);
+    products.forEach(p => {
+      sheet2.addRow([
+        p.name, p.sku || '-', p.stockQuantity, p.purchasePrice, p.sellingPrice,
+        p.stockQuantity * p.purchasePrice, p.stockQuantity * p.sellingPrice,
+        (p.stockQuantity * p.sellingPrice) - (p.stockQuantity * p.purchasePrice)
+      ]);
+    });
+    sheet2.columns = [{ width: 30 }, { width: 15 }, { width: 10 }, { width: 15 }, { width: 15 }, { width: 20 }, { width: 20 }, { width: 20 }];
+
+    // SHEET 3: VENTES
+    const sheet3 = workbook.addWorksheet('Analyse Ventes');
+    sheet3.addRow(['PRODUITS LES PLUS VENDUS']).font = { bold: true };
+    sheet3.addRow(['Rang', 'Produit', 'Volume Vendu', 'Revenu Généré']);
+    topProducts.forEach((p, i) => {
+      sheet3.addRow([`#${i+1}`, p.name, p.soldQty, p.revenue]);
+    });
+    sheet3.columns = [{ width: 10 }, { width: 40 }, { width: 20 }, { width: 25 }];
+
+    // SHEET 4: MOUVEMENTS & TRAÇABILITÉ
+    const sheet4 = workbook.addWorksheet('Mouvements & Traçabilité');
+    sheet4.addRow(['HISTORIQUE DES MOUVEMENTS']).font = { bold: true };
+    sheet4.addRow(['Date', 'Type', 'Produit', 'Delta', 'Batch', 'Utilisateur']);
+    movements.forEach(m => {
+      sheet4.addRow([
+        format(m.createdAt?.toDate ? m.createdAt.toDate() : new Date(), 'dd/MM/yyyy HH:mm'),
+        m.type, m.productName, m.quantity, m.batchNumber || '-', m.userName || 'Système'
+      ]);
+    });
+    sheet4.columns = [{ width: 22 }, { width: 15 }, { width: 35 }, { width: 10 }, { width: 20 }, { width: 20 }];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `RAPPORT_GLOBAL_ERP_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+Critique Export Excel:', error);
+    }
   };
 
   const totalRevenue = sales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
   const avgTicket = sales.length > 0 ? (totalRevenue / sales.length).toFixed(2) : 0;
+
+  const pieData = useMemo(() => {
+    return categories.map(c => {
+      const catProducts = products.filter(p => p.categoryId === c.id);
+      const totalStock = catProducts.reduce((acc, p) => acc + (p.stockQuantity || 0), 0);
+      const lowStockCount = catProducts.filter(p => (p.stockQuantity || 0) <= (p.minStockLevel || 5) && p.stockQuantity > 0).length;
+      const outOfStockCount = catProducts.filter(p => (p.stockQuantity || 0) <= 0).length;
+      
+      let color = '#10b981'; // Sain (emerald-500)
+      if (outOfStockCount > 0 && catProducts.length > 0) {
+        color = '#e11d48'; // Rupture (rose-600)
+      } else if (lowStockCount > 0) {
+        color = '#f59e0b'; // Alerte (amber-500)
+      }
+      
+      return { 
+        name: c.name, 
+        value: totalStock,
+        color
+      };
+    }).filter(c => c.value > 0);
+  }, [categories, products]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -220,8 +321,8 @@ export default function Reports() {
            <Button variant="outline" className="text-xs font-black uppercase h-9 border-slate-200" onClick={() => window.print()}>
              <FileText size={16} className="mr-2" /> Imprimer Page
            </Button>
-           <Button className="text-xs font-black uppercase h-9 bg-slate-900" onClick={exportValuationToExcel}>
-             <Download size={16} className="mr-2" /> Export Excel
+           <Button className="text-xs font-black uppercase h-9 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200" onClick={handleGlobalExport}>
+             <Download size={16} className="mr-2" /> Rapport Excel Pro
            </Button>
         </div>
       </div>
@@ -324,17 +425,17 @@ export default function Reports() {
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={categories.map(c => ({ 
-                            name: c.name, 
-                            value: products.filter(p => p.categoryId === c.id).reduce((sum, p) => sum + (p.stockQuantity || 0), 0)
-                          })).filter(c => c.value > 0)}
+                          data={pieData}
                           cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value"
                         >
-                          {categories.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#0f172a', color: '#fff' }}
+                          formatter={(value: number) => [`${value} unités`, 'Stock']}
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>

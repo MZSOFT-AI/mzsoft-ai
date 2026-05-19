@@ -8,7 +8,7 @@ import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { useCollection } from '../hooks/useCollection';
 import { useSession } from '../context/SessionContext';
 import { useSettings } from '../context/SettingsContext';
-import { Product, Category, SaleItem, Customer } from '../types';
+import { Product, Category, SaleItem, Customer, Project } from '../types';
 import { cn, formatCurrency, cleanObject, safeStringify } from '../lib/utils';
 import { useNotification } from '../context/NotificationContext';
 import { notificationService } from '../services/notificationService';
@@ -74,6 +74,7 @@ const POS: React.FC = () => {
   const { data: products, loading: productsLoading } = useCollection<Product>('products', [orderBy('name')]);
   const { data: categories } = useCollection<Category>('categories', [orderBy('name')]);
   const { data: customers } = useCollection<Customer>('customers', [orderBy('name')]);
+  const { data: projects } = useCollection<Project>('projects', [orderBy('name')]);
 
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +82,7 @@ const POS: React.FC = () => {
   const [receivedAmount, setReceivedAmount] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [customCustomerName, setCustomCustomerName] = useState('');
   const [customInfoOverride, setCustomInfoOverride] = useState(settings.customCompanyInfo || '');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
@@ -367,6 +369,8 @@ const POS: React.FC = () => {
           sessionId: activeSession?.id || null,
           customerId: selectedCustomer?.id || null,
           customerName: finalCustomerName,
+          projectId: selectedProject?.id || null,
+          projectName: selectedProject?.name || null,
           items: cart.map(item => ({
             productId: item.id,
             name: item.name,
@@ -405,6 +409,8 @@ const POS: React.FC = () => {
           balance: balanceRemaining,
           customerName: finalCustomerName,
           customerId: selectedCustomer?.id || undefined,
+          projectId: selectedProject?.id || undefined,
+          projectName: selectedProject?.name || undefined,
           userId: currentUid,
           userName: saleData.userName,
           status: balanceRemaining > 0 ? 'pending' : 'paid',
@@ -1051,6 +1057,34 @@ const POS: React.FC = () => {
               />
             </div>
           )}
+        </div>
+
+        {/* Project Section */}
+        <div className="p-4 border-b border-slate-200">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-1">
+              <HardHat size={12} className="text-blue-500" /> Chantier / Projet
+            </span>
+            <div className="flex gap-2">
+               {selectedProject && (
+                 <button onClick={() => setSelectedProject(null)} className="text-[10px] font-bold text-rose-600 hover:underline">Détacher</button>
+               )}
+            </div>
+          </div>
+          
+          <select 
+            className="w-full text-xs font-bold uppercase p-2 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            value={selectedProject?.id || ''}
+            onChange={(e) => {
+              const prj = (projects || []).find(p => p.id === e.target.value);
+              setSelectedProject(prj || null);
+            }}
+          >
+            <option value="">-- Aucun Chantier --</option>
+            {(projects || []).map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* Custom Header Info Section */}

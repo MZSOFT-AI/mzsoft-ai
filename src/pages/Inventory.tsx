@@ -40,6 +40,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
+import { excelService } from '../services/excelService';
+import { format } from 'date-fns';
 
 const productSchema = z.object({
   name: z.string().min(2, 'Le nom doit avoir au moins 2 caractères'),
@@ -457,25 +459,44 @@ const Inventory: React.FC = () => {
     );
   };
 
-  const exportToCSV = () => {
-    const headers = ['Nom', 'Catégorie', 'SKU', 'Code-barre', 'Prix Achat', 'Prix Vente', 'Stock', 'Seuil Alerte'];
-    const data = filteredProducts.map(p => [
-      p.name,
-      categories.find(c => c.id === p.categoryId)?.name || 'Sans catégorie',
-      p.sku || '',
-      p.barcode || '',
-      p.purchasePrice,
-      p.sellingPrice,
-      p.stockQuantity,
-      p.minStockLevel
-    ]);
+  const handleExportInventoryExcel = async () => {
+    try {
+      const data = filteredProducts.map(p => ({
+        name: p.name,
+        category: categories.find(c => c.id === p.categoryId)?.name || 'N/A',
+        sku: p.sku || '-',
+        quantity: p.stockQuantity,
+        unit: p.unit || 'u',
+        purchasePrice: p.purchasePrice,
+        sellingPrice: p.sellingPrice,
+        valuationAchat: p.stockQuantity * p.purchasePrice,
+        valuationVente: p.stockQuantity * p.sellingPrice,
+        status: p.stockQuantity <= 0 ? 'RUPTURE' : (p.stockQuantity <= (p.minStockLevel || 5) ? 'ALERTE' : 'SAIN')
+      }));
 
-    const csvContent = [headers, ...data].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `inventaire_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+      await excelService.generateProfessionalReport({
+        filename: `Inventaire_Valorise_${format(new Date(), 'yyyyMMdd')}`,
+        title: 'RAPPORT DE VALORISATION ET ÉTAT DES STOCKS',
+        subtitle: `Inventaire global au ${format(new Date(), 'dd/MM/yyyy HH:mm')}`,
+        columns: [
+          { header: 'Désignation Produit', key: 'name', width: 40 },
+          { header: 'Catégorie', key: 'category', width: 20 },
+          { header: 'Code SKU', key: 'sku', width: 15 },
+          { header: 'Qté', key: 'quantity', width: 10 },
+          { header: 'Unité', key: 'unit', width: 8 },
+          { header: 'Prix Achat (DA)', key: 'purchasePrice', width: 15 },
+          { header: 'Prix Vente (DA)', key: 'sellingPrice', width: 15 },
+          { header: 'Val. Achat Total', key: 'valuationAchat', width: 20 },
+          { header: 'Val. Vente Total', key: 'valuationVente', width: 20 },
+          { header: 'État', key: 'status', width: 15 }
+        ],
+        data
+      });
+      showToast("Rapport Excel professionnel généré", "success");
+    } catch (error) {
+      console.error('Export Error:', error);
+      showToast("Erreur lors de l'export Excel", "error");
+    }
   };
 
   const filteredProducts = (products || []).filter(p => {
@@ -624,9 +645,9 @@ const Inventory: React.FC = () => {
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               
-              <Button variant="outline" size="sm" onClick={exportToCSV} className="hidden sm:flex ml-2 text-xs h-9 uppercase font-bold">
+              <Button variant="outline" size="sm" onClick={handleExportInventoryExcel} className="hidden sm:flex ml-2 text-xs h-9 uppercase font-bold border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
                 <Download size={16} className="mr-2" />
-                Exporter
+                Export Excel Pro
               </Button>
               
               {canDeleteProducts && selectedIds.length > 0 && (
@@ -690,16 +711,23 @@ const Inventory: React.FC = () => {
                   <td>
                     <div className="flex items-center gap-3">
                       <div className={cn(
-                        "w-8 h-8 flex items-center justify-center border",
-                        stockStatus === 'out' ? "bg-rose-50 text-rose-500 border-rose-200" : "bg-slate-50 text-slate-400 border-slate-200"
+                        "w-10 h-10 rounded-full flex items-center justify-center border-2 shadow-sm transition-transform hover:scale-110",
+                        stockStatus === 'out' ? "bg-rose-100 text-rose-600 border-rose-500" : 
+                        stockStatus === 'low' ? "bg-amber-100 text-amber-600 border-amber-500" : 
+                        "bg-emerald-100 text-emerald-600 border-emerald-500"
                       )}>
-                        <Package size={14} />
+                        <Package size={16} />
                       </div>
                       <div>
-                        <p className="font-bold text-slate-800 text-sm leading-tight">{product.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">
-                          {product.barcode || '-'}
-                        </p>
+                        <p className="font-black text-slate-800 text-sm leading-tight uppercase tracking-tight">{product.name}</p>
+                        <div className="flex items-center gap-2">
+                           <span className="text-[9px] font-mono text-slate-400 bg-slate-50 px-1 border border-slate-100">
+                             {product.sku || 'N/A'}
+                           </span>
+                           <span className="text-[9px] font-mono text-slate-400">
+                             {product.barcode || ''}
+                           </span>
+                        </div>
                       </div>
                     </div>
                   </td>
