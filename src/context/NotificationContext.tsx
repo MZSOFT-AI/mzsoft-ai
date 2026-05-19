@@ -149,13 +149,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }}>
       {children}
       <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-md w-full sm:w-auto">
-        <AnimatePresence>
           {toasts.map((toast) => (
-            <motion.div
+            <div
               key={toast.id}
-              initial={{ opacity: 0, x: 50, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
               className={`
                 flex items-center gap-3 p-4 rounded-2xl shadow-2xl border backdrop-blur-md
                 ${toast.type === 'success' ? 'bg-emerald-500/90 border-emerald-400 text-white' : ''}
@@ -178,9 +174,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
               >
                 <X size={18} />
               </button>
-            </motion.div>
+            </div>
           ))}
-        </AnimatePresence>
       </div>
     </NotificationContext.Provider>
   );

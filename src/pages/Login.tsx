@@ -10,7 +10,9 @@ import { Button } from '../components/ui/Button';
 import { useNotification } from '../context/NotificationContext';
 
 const Login: React.FC = () => {
-  const { signIn, loginLocal, registerFirstAdmin, user, userData, loading, isSigningIn, usersExist } = useAuth();
+  const auth = useAuth();
+  const { signIn, loginLocal, registerFirstAdmin, user, userData, loading, isSigningIn, usersExist } = auth;
+  
   const { settings } = useSettings();
   const { showToast } = useNotification();
   
@@ -25,6 +27,12 @@ const Login: React.FC = () => {
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) return;
+
+    if (typeof loginLocal !== 'function') {
+      showToast("Erreur système : fonction de connexion non disponible. Veuillez actualiser.", "error");
+      return;
+    }
+
     try {
       await loginLocal(username, password);
       showToast("Connexion réussie", "success");
@@ -36,6 +44,12 @@ const Login: React.FC = () => {
   const handleRegisterAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password || !displayName) return;
+
+    if (typeof registerFirstAdmin !== 'function') {
+      showToast("Erreur système : fonction d'initialisation non disponible. Veuillez actualiser la page.", "error");
+      return;
+    }
+
     try {
       await registerFirstAdmin(username, password, displayName);
       showToast("Compte Administrateur créé avec succès", "success");
@@ -183,7 +197,13 @@ const Login: React.FC = () => {
                   </div>
 
                   <button
-                    onClick={signIn}
+                    onClick={() => {
+                      if (typeof signIn === 'function') {
+                        signIn();
+                      } else {
+                        showToast("Erreur système : connexion Google non disponible", "error");
+                      }
+                    }}
                     disabled={isSigningIn}
                     className={cn(
                       "w-full flex items-center justify-center gap-4 py-4 px-6 bg-white border border-slate-300 hover:border-slate-800 text-slate-800 font-black uppercase text-xs tracking-widest transition-all active:translate-y-0.5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)]",

@@ -3,6 +3,7 @@ import {
   collection, 
   query, 
   getDocs, 
+  onSnapshot,
   doc, 
   setDoc, 
   updateDoc, 
@@ -81,20 +82,50 @@ const Users: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    try {
-      const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-      const snap = await getDocs(q);
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
       const fetchedUsers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
       setUsers(fetchedUsers);
-    } catch (error) {
+      setLoading(false);
+    }, (error) => {
       console.error("Error fetching users:", safeStringify(error));
       showToast("Erreur lors de la récupération des utilisateurs", "error");
-    } finally {
       setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const getPresetPermissions = (role: UserData['role']): UserPermissions => {
+    switch (role) {
+      case 'superadmin':
+        return { ...DEFAULT_PERMISSIONS, canManageUsers: true };
+      case 'admin':
+        return { ...DEFAULT_PERMISSIONS, canManageUsers: false };
+      case 'manager':
+        return {
+          canManageStock: true,
+          canDeleteProducts: false,
+          canSell: true,
+          canProcessReturns: true,
+          canPerformInventory: true,
+          canManageExpenses: true,
+          canViewReports: true,
+          canManageUsers: false
+        };
+      case 'vendeur':
+        return {
+          canManageStock: false,
+          canDeleteProducts: false,
+          canSell: true,
+          canProcessReturns: false,
+          canPerformInventory: false,
+          canManageExpenses: false,
+          canViewReports: false,
+          canManageUsers: false
+        };
+      default:
+        return { ...DEFAULT_PERMISSIONS, canManageUsers: false };
     }
   };
 
@@ -109,19 +140,20 @@ const Users: React.FC = () => {
         role: user.role,
         isLocalOnly: !!user.isLocalOnly,
         status: user.status || 'active',
-        permissions: user.permissions ? { ...user.permissions } : { ...DEFAULT_PERMISSIONS }
+        permissions: user.permissions ? { ...user.permissions } : getPresetPermissions(user.role)
       });
     } else {
       setEditingUser(null);
+      const initialRole = 'vendeur' as UserData['role'];
       setFormData({
         username: '',
         email: '',
         displayName: '',
         localPassword: '',
-        role: 'admin',
+        role: initialRole,
         isLocalOnly: true,
         status: 'active',
-        permissions: { ...DEFAULT_PERMISSIONS }
+        permissions: getPresetPermissions(initialRole)
       });
     }
     setIsModalOpen(true);
@@ -179,7 +211,7 @@ const Users: React.FC = () => {
 
         showToast("Utilisateur mis à jour", "success");
       } else {
-        // ... (check username logic)
+        // Check username logic
         if (formData.isLocalOnly) {
           const q = query(collection(db, 'users'), where('username', '==', formData.username));
           const snap = await getDocs(q);
@@ -190,7 +222,10 @@ const Users: React.FC = () => {
           }
         }
 
-        const userId = formData.isLocalOnly ? `local_${Date.now()}` : (formData.email?.toLowerCase().replace(/\./g, '_') || `user_${Date.now()}`);
+        const userId = formData.isLocalOnly 
+          ? `local_${Date.now()}_${Math.floor(Math.random() * 1000)}` 
+          : (formData.email?.toLowerCase().replace(/\./g, '_') || `user_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
+        
         const newUser = cleanObject({
           email: formData.isLocalOnly ? null : formData.email.toLowerCase(),
           username: formData.username || null,
@@ -234,7 +269,6 @@ const Users: React.FC = () => {
         showToast("Utilisateur créé avec succès", "success");
       }
       setIsModalOpen(false);
-      fetchUsers();
     } catch (error) {
       console.error(safeStringify(error));
       showToast("Erreur lors de l'enregistrement", "error");
@@ -313,7 +347,6 @@ const Users: React.FC = () => {
       showToast("Utilisateur supprimé et sessions clôturées", "success");
       setIsDeleteModalOpen(false);
       setUserToDelete(null);
-      fetchUsers();
     } catch (error) {
       console.error(error);
       showToast("Erreur lors de la suppression", "error");
@@ -368,14 +401,9 @@ const Users: React.FC = () => {
 
       {/* Users Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <AnimatePresence mode='popLayout'>
           {filteredUsers.map((user) => (
-            <motion.div
+            <div
               key={user.id}
-              layout
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9 }}
               className="bg-white border-2 border-slate-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all relative overflow-hidden group"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 -mr-12 -mt-12 rounded-full transition-transform group-hover:scale-110" />
@@ -457,9 +485,8 @@ const Users: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           ))}
-        </AnimatePresence>
       </div>
 
       {loading && filteredUsers.length === 0 && (
@@ -470,20 +497,13 @@ const Users: React.FC = () => {
       )}
 
       {/* Modal */}
-      <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+            <div 
               onClick={() => setIsModalOpen(false)}
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
             />
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            <div 
               className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
@@ -520,10 +540,19 @@ const Users: React.FC = () => {
                       <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Rôle Système</label>
                       <select 
                         value={formData.role}
-                        onChange={(e) => setFormData({...formData, role: e.target.value as UserData['role']})}
+                        onChange={(e) => {
+                          const newRole = e.target.value as UserData['role'];
+                          setFormData({
+                            ...formData, 
+                            role: newRole,
+                            permissions: getPresetPermissions(newRole)
+                          });
+                        }}
                         className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
                         disabled={!isSuperAdmin && formData.role === 'superadmin'}
                       >
+                        <option value="vendeur">Vendeur (Caisse)</option>
+                        <option value="manager">Manager</option>
                         <option value="admin">Administrateur</option>
                         {isSuperAdmin && <option value="superadmin">Super Admin</option>}
                       </select>
@@ -683,11 +712,9 @@ const Users: React.FC = () => {
                   </Button>
                 </div>
               </form>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
-
       <ConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}

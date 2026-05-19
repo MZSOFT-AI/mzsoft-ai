@@ -1406,9 +1406,13 @@ const POS: React.FC = () => {
       />
 
       <BarcodePrintModal 
-        product={productForBarcode}
-        isOpen={isBarcodeModalOpen}
-        onClose={() => setIsBarcodeModalOpen(false)}
+        products={products}
+        initialProduct={productForBarcode} 
+        isOpen={isBarcodeModalOpen} 
+        onClose={() => {
+          setIsBarcodeModalOpen(false);
+          setProductForBarcode(null);
+        }} 
       />
     </div>
   );

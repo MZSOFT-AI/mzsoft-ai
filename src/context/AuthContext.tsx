@@ -242,10 +242,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Votre compte est désactivé.');
       }
 
-      if (data.role !== 'admin' && data.role !== 'superadmin') {
-        throw new Error('Accès non autorisé : Permissions insuffisantes.');
-      }
-
       if (data.localPassword !== password) {
         throw new Error('Mot de passe incorrect');
       }
@@ -276,7 +272,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const registerFirstAdmin = async (username: string, password: string, displayName: string) => {
+  async function registerFirstAdmin(username: string, password: string, displayName: string) {
     setIsSigningIn(true);
     try {
       const q = query(collection(db, 'users'), limit(1));
@@ -327,7 +323,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsSigningIn(false);
     }
-  };
+  }
 
   const logout = async () => {
     try {
@@ -376,8 +372,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return !!userData.permissions[permission];
   };
 
+  const authContextValue: AuthContextType = {
+    user,
+    userData,
+    loading,
+    signIn,
+    loginLocal,
+    registerFirstAdmin,
+    logout,
+    isAdmin,
+    isSuperAdmin,
+    usersExist,
+    isSigningIn,
+    hasPermission
+  };
+
   return (
-    <AuthContext.Provider value={{ user, userData, loading, signIn, loginLocal, registerFirstAdmin, logout, isAdmin, isSuperAdmin, usersExist, isSigningIn, hasPermission }}>
+    <AuthContext.Provider value={authContextValue}>
       {children}
     </AuthContext.Provider>
   );

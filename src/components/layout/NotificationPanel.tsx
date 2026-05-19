@@ -167,7 +167,7 @@ const NotificationPanel: React.FC = () => {
                           <div className="flex items-start justify-between gap-2 mb-1">
                             <span className={`
                               text-xs font-black uppercase tracking-tighter truncate
-                              ${n.status === 'unread' || !n.isRead ? 'text-slate-800' : 'text-slate-500'}
+                              ${n.type === 'low_stock' ? 'text-rose-600' : (n.status === 'unread' || !n.isRead ? 'text-slate-800' : 'text-slate-500')}
                             `}>
                               {n.title}
                             </span>
@@ -177,10 +177,16 @@ const NotificationPanel: React.FC = () => {
                           </div>
                           <p className={`
                             text-[11px] leading-relaxed mb-2 line-clamp-2
-                            ${n.status === 'unread' || !n.isRead ? 'text-slate-600 font-medium' : 'text-slate-400'}
+                            ${n.type === 'low_stock' ? 'text-rose-500/80 font-bold' : (n.status === 'unread' || !n.isRead ? 'text-slate-600 font-medium' : 'text-slate-400')}
                           `}>
                             {n.message}
                           </p>
+                          
+                          {n.type === 'low_stock' && (
+                            <div className="mb-2 py-0.5 px-1.5 bg-rose-50 border border-rose-100 rounded text-[8px] font-black text-rose-600 uppercase tracking-widest inline-block">
+                              Attention Rupture
+                            </div>
+                          )}
 
                           <div className="flex items-center gap-3">
                             {/* Priority Tag */}

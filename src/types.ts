@@ -65,6 +65,9 @@ export interface StockMovement extends BaseEntity {
   userId: string;
   userName?: string;
   referenceId?: string;
+  batchNumber?: string;
+  expiryDate?: any;
+  billNumber?: string;
 }
 
 export interface Customer extends BaseEntity {

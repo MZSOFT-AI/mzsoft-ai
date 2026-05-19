@@ -17,9 +17,9 @@ import {
   LayoutGrid,
   Calendar,
   Package,
-  AlertTriangle
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import { 
   AreaChart, 
   Area, 
@@ -197,53 +197,59 @@ const Dashboard: React.FC = () => {
            </Button>
         </div>
       </div>
-
-      {/* Notifications Section for Admins */}
+      {/* Notifications Section for Admins - New Red Design */}
       {isAdmin && notifications.length > 0 && (
-        <div className="bg-rose-50 border-l-4 border-rose-600 p-4 shadow-sm animate-pulse-slow">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="text-rose-600" size={20} />
-              <h2 className="text-sm font-black uppercase tracking-widest text-rose-900">Alertes Critiques ({notifications.length})</h2>
+        <div className="mb-6 overflow-hidden rounded-xl border-l-[6px] border-rose-600 bg-rose-50/50 shadow-sm animate-pulse-slow">
+          <div className="flex flex-col md:flex-row justify-between items-center px-6 py-4 gap-4">
+            <div className="flex items-center gap-3">
+               <AlertCircle className="text-rose-600" size={24} />
+               <h2 className="text-lg font-black text-rose-900 uppercase tracking-tight">
+                 Alertes Critiques ({notifications.length})
+               </h2>
             </div>
             <button 
-              onClick={() => notificationService.markAllAsRead()}
-              className="text-[10px] font-black uppercase text-rose-600 hover:text-rose-800 underline"
+              onClick={() => notificationService.markAllAsRead()} 
+              className="text-[11px] font-black uppercase text-rose-600 hover:text-rose-800 underline underline-offset-4 tracking-widest transition-colors"
             >
               Tout marquer comme lu
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+
+          <div className="p-6 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
              {(notifications || []).map(notif => (
-               <div key={notif.id} className="bg-white p-3 rounded border border-rose-100 shadow-sm flex flex-col justify-between">
+               <div key={notif.id} className="bg-white border border-slate-100 rounded-lg p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[140px] group">
                   <div>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-3">
                        <span className={cn(
-                         "text-[9px] font-black uppercase px-2 py-0.5 rounded",
-                         notif.type === 'cash_discrepancy' ? "bg-amber-100 text-amber-600" : 
-                         notif.type === 'stock_discrepancy' ? "bg-purple-100 text-purple-600" :
-                         "bg-red-100 text-red-600"
+                         "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
+                         notif.priority === 'critical' ? "bg-rose-100 text-rose-700" : 
+                         notif.priority === 'high' ? "bg-orange-100 text-orange-700" :
+                         "bg-blue-100 text-blue-700"
                        )}>
-                         {notif.priority}
+                         {notif.priority === 'critical' ? 'CRITIQUE' : 
+                          notif.priority === 'high' ? 'MOYEN' : 'FAIBLE'}
                        </span>
-                       <span className="text-[9px] font-bold text-slate-400">
+                       <span className="text-[10px] text-slate-400 font-bold">
                          {notif.createdAt ? format((notif.createdAt as any).toDate ? (notif.createdAt as any).toDate() : new Date(), 'dd/MM HH:mm') : '-'}
                        </span>
                     </div>
-                    <p className="text-xs font-black text-slate-800 mb-1">{notif.title}</p>
-                    <p className="text-[10px] font-bold text-slate-500 leading-tight mb-2">{notif.message}</p>
+                    <p className="text-sm font-black text-slate-900 mb-1 leading-tight">{notif.title}</p>
+                    <p className="text-[11px] text-slate-500 leading-tight mb-2 line-clamp-2">{notif.message}</p>
                   </div>
-                  <button 
-                    onClick={() => notificationService.markAsRead(notif.id!)}
-                    className="self-end text-[9px] font-black uppercase text-blue-600 hover:underline"
-                  >
-                    Acquitter
-                  </button>
+                  <div className="flex justify-end">
+                    <button 
+                      onClick={() => notificationService.markAsRead(notif.id!)}
+                      className="text-[11px] font-black uppercase text-blue-600 hover:text-blue-800 tracking-tighter"
+                    >
+                      ACQUITTER
+                    </button>
+                  </div>
                </div>
              ))}
           </div>
         </div>
       )}
+
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -416,11 +422,28 @@ const Dashboard: React.FC = () => {
               </thead>
               <tbody>
                 {statsData.lowStockItems.map((p, i) => (
-                  <tr key={i}>
-                    <td className="font-bold text-slate-700 text-xs">{p.name}</td>
-                    <td className="text-center font-black text-rose-600 text-xs">{p.stockQuantity}</td>
+                  <tr key={i} className={p.stockQuantity <= 0 ? "bg-rose-50/50" : ""}>
+                    <td className="font-bold text-slate-700 text-xs">
+                       <div className="flex items-center gap-2">
+                          {p.stockQuantity <= 0 && <AlertCircle size={12} className="text-rose-600" />}
+                          {p.name}
+                       </div>
+                    </td>
+                    <td className={cn(
+                      "text-center font-black text-xs",
+                      p.stockQuantity <= 0 ? "text-rose-600" : "text-amber-500"
+                    )}>
+                      {p.stockQuantity}
+                    </td>
                     <td className="text-center">
-                       <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-rose-50 text-rose-500 border border-rose-100">Action Requise</span>
+                       <span className={cn(
+                         "text-[9px] font-black uppercase px-2 py-0.5 border",
+                         p.stockQuantity <= 0 
+                           ? "bg-rose-600 text-white border-rose-600" 
+                           : "bg-rose-50 text-rose-500 border-rose-100"
+                       )}>
+                         {p.stockQuantity <= 0 ? 'RUPTURE' : 'Action Requise'}
+                       </span>
                     </td>
                   </tr>
                 ))}

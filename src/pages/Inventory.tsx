@@ -733,6 +733,11 @@ const Inventory: React.FC = () => {
                              ~ {(product.stockQuantity * (product.unitsPerRoll || 0)).toFixed(1)} ml
                            </p>
                         )}
+                        {stockStatus === 'out' && (
+                          <span className="block text-[8px] font-black bg-rose-600 text-white px-1 mt-1 uppercase tracking-widest text-center rounded-sm">
+                            Rupture
+                          </span>
+                        )}
                       </span>
 
                       {canManageStock && (
@@ -965,9 +970,13 @@ const Inventory: React.FC = () => {
       </Modal>
 
       <BarcodePrintModal 
-        product={productForBarcode} 
+        products={products}
+        initialProduct={productForBarcode} 
         isOpen={isBarcodeModalOpen} 
-        onClose={() => setIsBarcodeModalOpen(false)} 
+        onClose={() => {
+          setIsBarcodeModalOpen(false);
+          setProductForBarcode(null);
+        }} 
       />
 
       <CategoryModal isOpen={isCatModalOpen} onClose={() => setIsCatModalOpen(false)} />

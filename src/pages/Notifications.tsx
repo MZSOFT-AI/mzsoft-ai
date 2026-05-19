@@ -76,23 +76,85 @@ const Notifications: React.FC = () => {
 
   return (
     <div className="p-6 max-w-6xl mx-auto min-h-screen pb-20">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 leading-none uppercase tracking-tighter flex items-center gap-3">
-             <Bell className="text-blue-600" size={32} /> Centre de Notifications
-          </h1>
-          <p className="text-slate-500 text-sm font-medium mt-1">Gérez vos alertes et activités système.</p>
+      {/* New Red Emergency Header for Critical Alerts */}
+      <div className="mb-8 overflow-hidden rounded-xl border-l-[6px] border-rose-600 bg-rose-50/50">
+        <div className="flex flex-col md:flex-row justify-between items-center px-6 py-4 gap-4">
+          <div className="flex items-center gap-3">
+             <AlertCircle className="text-rose-600" size={24} />
+             <h2 className="text-lg font-black text-rose-900 uppercase tracking-tight">
+               Alertes Critiques ({notifications.filter(n => n.priority === 'critical' || n.priority === 'high').length})
+             </h2>
+          </div>
+          <button 
+            onClick={markAllAsRead} 
+            className="text-[11px] font-black uppercase text-rose-600 hover:text-rose-800 underline underline-offset-4 tracking-widest transition-colors"
+          >
+            Tout marquer comme lu
+          </button>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={markAllAsRead} className="text-xs uppercase font-black tracking-widest border-slate-200">
-            <CheckCheck size={16} className="mr-2" /> Tout marquer lu
-          </Button>
+
+        {/* Dynamic Grid for Critical/Important Alerts */}
+        <div className="p-6 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredNotifications
+            .filter(n => n.priority === 'critical' || n.priority === 'high' || n.status === 'unread')
+            .slice(0, 9)
+            .map((notification) => (
+            <div 
+              key={notification.id}
+              className="bg-white border border-slate-100 rounded-lg p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[160px] group"
+            >
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
+                    notification.priority === 'critical' ? "bg-rose-100 text-rose-700" :
+                    notification.priority === 'high' ? "bg-orange-100 text-orange-700" :
+                    "bg-blue-100 text-blue-700"
+                  )}>
+                    {notification.priority === 'critical' ? 'CRITIQUE' : 
+                     notification.priority === 'high' ? 'MOYEN' : 'FAIBLE'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    {format(new Date((notification.createdAt as any)?.toDate() || new Date()), 'dd/MM HH:mm', { locale: fr })}
+                  </span>
+                </div>
+                
+                <h3 className="text-sm font-black text-slate-900 mb-1 leading-tight">{notification.title}</h3>
+                <p className="text-[11px] text-slate-500 line-clamp-3 leading-relaxed">
+                  {notification.message}
+                </p>
+                
+                {/* Specific rupture alert styling */}
+                {notification.type === 'low_stock' && (
+                  <div className="mt-2 py-1 px-2 bg-rose-50 border border-rose-100 rounded text-[10px] font-bold text-rose-600 flex items-center gap-1.5">
+                    <AlertCircle size={12} /> ALERTE DE RUPTURE CRITIQUE
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button 
+                  onClick={() => markAsRead(notification.id!)}
+                  className="text-[11px] font-black uppercase text-blue-600 hover:text-blue-800 tracking-tighter"
+                >
+                  ACQUITTER
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Filters Bar */}
-      <div className="bg-white border border-slate-200 p-4 mb-6 shadow-sm flex flex-col md:flex-row gap-4">
+      {/* Historical / Standard Notifications Section */}
+      <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-2">
+        <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">Historique des activités</h3>
+        <div className="flex gap-4">
+           {/* Filters move here or stay in search bar if needed */}
+        </div>
+      </div>
+
+      {/* Filters Bar (keeping it but making it sleeker) */}
+      <div className="bg-white border border-slate-200 p-4 mb-6 rounded-xl shadow-sm flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
@@ -150,24 +212,17 @@ const Notifications: React.FC = () => {
 
       {/* Notifications List */}
       <div className="space-y-3">
-        <AnimatePresence mode="popLayout">
           {filteredNotifications.length === 0 ? (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+            <div 
               className="py-20 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl"
             >
               <Bell size={48} className="mx-auto text-slate-300 mb-2" />
               <p className="text-slate-500 font-bold">Aucune notification trouvée.</p>
-            </motion.div>
+            </div>
           ) : (
             filteredNotifications.map((notification) => (
-              <motion.div
-                layout
+              <div
                 key={notification.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
                 className={cn(
                   "group relative bg-white border border-slate-200 rounded-xl p-4 transition-all hover:shadow-lg hover:border-blue-300",
                   notification.status === 'unread' && "border-l-4 border-l-blue-600"
@@ -254,10 +309,9 @@ const Notifications: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))
           )}
-        </AnimatePresence>
       </div>
     </div>
   );

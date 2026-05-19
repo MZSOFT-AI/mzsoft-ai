@@ -25,6 +25,8 @@ const StockInModal: React.FC<StockInModalProps> = ({ isOpen, onClose, products }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [billNumber, setBillNumber] = useState('');
+  const [batchNumber, setBatchNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
 
   const filteredProducts = searchTerm.length > 1 
     ? products.filter(p => 
@@ -80,6 +82,8 @@ const StockInModal: React.FC<StockInModalProps> = ({ isOpen, onClose, products }
           calculatedPump: weightedAveragePrice,
           reason: 'Approvisionnement (Achat avec PUMP)',
           billNumber: billNumber || null,
+          batchNumber: batchNumber || null,
+          expiryDate: expiryDate ? new Date(expiryDate) : null,
           createdAt: serverTimestamp(),
           userId: auth.currentUser?.uid,
           userName: auth.currentUser?.displayName || 'Admin'
@@ -162,13 +166,35 @@ const StockInModal: React.FC<StockInModalProps> = ({ isOpen, onClose, products }
               </button>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">N° de Bon / Référence d'Achat (Optionnel)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: BON-2024-001"
+                  value={billNumber}
+                  onChange={(e) => setBillNumber(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">N° de Lot / Batch (Traçabilité)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: LOT-XYZ-123"
+                  value={batchNumber}
+                  onChange={(e) => setBatchNumber(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">N° de Bon / Référence d'Achat (Optionnel)</label>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Date d'Expiration (Optionnel)</label>
               <input
-                type="text"
-                placeholder="Ex: BON-2024-001"
-                value={billNumber}
-                onChange={(e) => setBillNumber(e.target.value)}
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
               />
             </div>

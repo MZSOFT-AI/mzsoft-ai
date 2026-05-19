@@ -30,43 +30,37 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
   }, [isOpen]);
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
-          />
-          <div className="fixed inset-0 flex items-center justify-center p-4 z-[101] pointer-events-none">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className={cn(
-                "bg-white w-full rounded-3xl shadow-2xl overflow-hidden pointer-events-auto border border-gray-100",
-                sizes[size]
-              )}
-            >
-              <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-                <h2 className="text-xl font-bold tracking-tight text-gray-900">{title}</h2>
-                <button
-                  onClick={onClose}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
-                >
-                  <X size={20} />
-                </button>
+      <>
+        {isOpen && (
+          <>
+            <div
+              onClick={onClose}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+            />
+            <div className="fixed inset-0 flex items-center justify-center p-4 z-[101] pointer-events-none">
+              <div
+                className={cn(
+                  "bg-white w-full rounded-3xl shadow-2xl overflow-hidden pointer-events-auto border border-gray-100",
+                  sizes[size]
+                )}
+              >
+                <div className="p-6 border-b border-gray-50 flex items-center justify-between">
+                  <h2 className="text-xl font-bold tracking-tight text-gray-900">{title}</h2>
+                  <button
+                    onClick={onClose}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                <div className="p-0 overflow-y-auto max-h-[90vh]">
+                  {children}
+                </div>
               </div>
-              <div className="p-0 overflow-y-auto max-h-[90vh]">
-                {children}
-              </div>
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>
+            </div>
+          </>
+        )}
+      </>
   );
 };
 
