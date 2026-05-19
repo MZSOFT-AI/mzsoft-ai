@@ -414,7 +414,7 @@ const InventoryAuditDetails: React.FC = () => {
                       </div>
                     </td>
                     <td className="text-center font-mono text-xs text-slate-500">
-                      {Number(item.theoreticalStock || 0).toFixed(2).replace(/\.00$/, '')} {item.unit === 'ml' ? 'u' : item.unit}
+                      {Number(item.theoreticalStock || 0).toFixed(2).replace(/\.00$/, '')} {item.unit}
                     </td>
                     <td className="text-center">
                       <div className="inline-flex items-center gap-2">
@@ -435,7 +435,7 @@ const InventoryAuditDetails: React.FC = () => {
                             )}
                           />
                         )}
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">{item.unit === 'ml' ? 'u' : item.unit}</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">{item.unit}</span>
                       </div>
                     </td>
                     <td className="text-center">

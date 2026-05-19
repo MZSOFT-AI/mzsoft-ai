@@ -49,7 +49,7 @@ const productSchema = z.object({
   sellingPrice: z.number().min(0, 'Prix requis'),
   stockQuantity: z.number().min(0, 'Stock requis'),
   minStockLevel: z.number().min(0, 'Seuil requis'),
-  unit: z.enum(['u', 'm', 'ml', 'kg', 'l']).optional(),
+  unit: z.enum(['u', 'm', 'ml', 'kg', 'l', 'g', 'bt', 'pq', 'ans']).optional(),
   description: z.string().optional(),
   sellInML: z.boolean().optional(),
   unitsPerRoll: z.preprocess((val) => {
@@ -727,7 +727,7 @@ const Inventory: React.FC = () => {
                         "font-black text-sm min-w-[2.5rem]",
                         stockStatus === 'out' ? "text-rose-600" : stockStatus === 'low' ? "text-amber-500" : "text-slate-800"
                       )}>
-                        {Number(product.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[10px] text-slate-400 font-normal">{product.sellInML ? 'u' : (product.unit || 'u')}</span>
+                        {Number(product.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[10px] text-slate-400 font-normal">{product.unit || 'u'}</span>
                         {product.sellInML && (
                            <p className="text-[9px] text-indigo-500 font-bold block">
                              ~ {(product.stockQuantity * (product.unitsPerRoll || 0)).toFixed(1)} ml
@@ -853,7 +853,11 @@ const Inventory: React.FC = () => {
                 <option value="ml">Mètre Linéaire (ml)</option>
                 <option value="m">Mètre (m)</option>
                 <option value="kg">Kilogramme (kg)</option>
+                <option value="g">Gramme (g)</option>
                 <option value="l">Litre (l)</option>
+                <option value="bt">Boîte</option>
+                <option value="pq">Paquet</option>
+                <option value="ans">Ans (Années)</option>
               </select>
             </div>
 

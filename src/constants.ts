@@ -31,7 +31,8 @@ import {
   ClipboardList,
   RotateCcw,
   ShieldCheck,
-  FileText
+  FileText,
+  Info
 } from 'lucide-react';
 
 export const APP_CONFIG = {
@@ -49,7 +50,7 @@ export const MENU_ITEMS = [
   { id: 'stock-movements', label: 'Historique Stock', path: '/stock-movements', icon: History },
   { id: 'categories', label: 'Catégories', path: '/categories', icon: Tags },
   { id: 'sales-history', label: 'Historique Ventes', path: '/sales-history', icon: History },
-  { id: 'returns', label: 'Retours / Bons', path: '/sales-history', icon: RotateCcw },
+  { id: 'returns', label: 'Retours / Bons', path: '/sales-history?mode=return', icon: RotateCcw },
   { id: 'customers', label: 'Clients', path: '/customers', icon: Users2 },
   { id: 'suppliers', label: 'Fournisseurs', path: '/suppliers', icon: Truck },
   { id: 'expenses', label: 'Dépenses', path: '/expenses', icon: DollarSign },

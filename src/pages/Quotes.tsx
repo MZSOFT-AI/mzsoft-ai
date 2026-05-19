@@ -330,6 +330,7 @@ const Quotes: React.FC = () => {
         userName: userData?.displayName || user?.displayName,
         status: 'completed',
         paymentMethod: 'cash',
+        source: 'quote',
         customCompanyInfo: selectedQuote.customCompanyInfo,
         createdAt: serverTimestamp(),
         referenceQuoteId: selectedQuote.id

@@ -149,7 +149,14 @@ const Notifications: React.FC = () => {
       <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-2">
         <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">Historique des activités</h3>
         <div className="flex gap-4">
-           {/* Filters move here or stay in search bar if needed */}
+           {notifications.filter(n => n.status === 'unread').length > 0 && (
+             <button 
+               onClick={markAllAsRead}
+               className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 transition-colors"
+             >
+               <CheckCheck size={14} /> Tout marquer comme lu
+             </button>
+           )}
         </div>
       </div>
 

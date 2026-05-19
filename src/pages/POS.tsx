@@ -364,6 +364,7 @@ const POS: React.FC = () => {
         const saleData = {
           userId: activeSession?.userId || currentUid,
           userName: activeSession?.userName || user?.displayName || userData?.displayName || user?.email?.split('@')[0] || 'Vendeur',
+          sessionId: activeSession?.id || null,
           customerId: selectedCustomer?.id || null,
           customerName: finalCustomerName,
           items: cart.map(item => ({
@@ -393,6 +394,7 @@ const POS: React.FC = () => {
         // Create Invoice Record for history and debt
         const invoiceData = {
           invoiceNumber: saleId,
+          sessionId: activeSession?.id || null,
           items: cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price, total: item.price * item.quantity })),
           subtotal,
           taxAmount: tax,
@@ -913,7 +915,14 @@ const POS: React.FC = () => {
                   <tr key={`${item.id}-${item.unit}`}>
                     <td className="py-2">
                        <p className="font-bold text-slate-700 leading-tight">{item.name}</p>
-                       <p className="text-[9px] text-slate-400 font-bold uppercase">{item.unit === 'ml' ? 'Facturation au Mètre' : 'Facturation à l\'unité'}</p>
+                       <p className="text-[9px] text-slate-400 font-bold uppercase">
+                         {item.unit === 'ml' ? 'Facturation au Mètre' : 
+                          item.unit === 'g' || item.unit === 'kg' ? 'Facturation au Poids' :
+                          item.unit === 'm' ? 'Facturation à la Longueur' :
+                          item.unit === 'l' ? 'Facturation au Volume' :
+                          item.unit === 'ans' ? 'Service (Années)' :
+                          'Facturation à l\'unité'}
+                       </p>
                     </td>
                     <td className="text-right font-mono text-slate-500">
                       {formatCurrency(item.price)}

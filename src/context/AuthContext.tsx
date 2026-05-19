@@ -225,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginLocal = async (username: string, password: string) => {
+  const loginLocal = React.useCallback(async (username: string, password: string) => {
     setIsSigningIn(true);
     try {
       const q = query(collection(db, 'users'), where('username', '==', username.trim()), limit(1));
@@ -270,9 +270,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsSigningIn(false);
     }
-  };
+  }, [user, userData]);
 
-  async function registerFirstAdmin(username: string, password: string, displayName: string) {
+  const registerFirstAdmin = React.useCallback(async (username: string, password: string, displayName: string) => {
     setIsSigningIn(true);
     try {
       const q = query(collection(db, 'users'), limit(1));
@@ -323,7 +323,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsSigningIn(false);
     }
-  }
+  }, []);
 
   const logout = async () => {
     try {

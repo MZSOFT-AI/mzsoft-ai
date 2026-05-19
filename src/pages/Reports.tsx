@@ -315,27 +315,77 @@ export default function Reports() {
                 </CardContent>
               </Card>
 
-              <Card className="border-slate-200 shadow-sm">
+              <Card className="border-slate-200 shadow-sm lg:col-span-1">
                 <CardHeader className="pb-0">
                    <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-400">Stock par Catégorie</CardTitle>
                 </CardHeader>
-                <CardContent className="h-[300px] flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={categories.map(c => ({ 
-                          name: c.name, 
-                          value: products.filter(p => p.categoryId === c.id).length 
-                        }))}
-                        cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={5} dataKey="value"
-                      >
-                        {categories.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <CardContent className="space-y-6">
+                  <div className="h-[250px] flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categories.map(c => ({ 
+                            name: c.name, 
+                            value: products.filter(p => p.categoryId === c.id).reduce((sum, p) => sum + (p.stockQuantity || 0), 0)
+                          })).filter(c => c.value > 0)}
+                          cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value"
+                        >
+                          {categories.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-4">
+                    <table className="w-full text-left text-[10px]">
+                      <thead>
+                        <tr className="text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                          <th className="pb-2 font-black">Catégorie</th>
+                          <th className="pb-2 font-black text-center">Articles</th>
+                          <th className="pb-2 font-black text-center">Stock Total</th>
+                          <th className="pb-2 font-black text-right">État</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {categories.map(c => {
+                          const catProducts = products.filter(p => p.categoryId === c.id);
+                          const totalStock = catProducts.reduce((acc, p) => acc + (p.stockQuantity || 0), 0);
+                          const lowStockCount = catProducts.filter(p => (p.stockQuantity || 0) <= (p.minStockLevel || 5) && p.stockQuantity > 0).length;
+                          const outOfStockCount = catProducts.filter(p => (p.stockQuantity || 0) <= 0).length;
+                          
+                          let status = 'Sain';
+                          let colorClass = 'bg-emerald-100 text-emerald-700';
+                          
+                          if (outOfStockCount > 0) {
+                            status = 'Rupture';
+                            colorClass = 'bg-rose-100 text-rose-700';
+                          } else if (lowStockCount > 0) {
+                            status = 'Alerte';
+                            colorClass = 'bg-amber-100 text-amber-700';
+                          }
+
+                          return (
+                            <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="py-2 font-bold text-slate-700">{c.name}</td>
+                              <td className="py-2 text-center text-slate-500 font-medium">{catProducts.length}</td>
+                              <td className="py-2 text-center font-black text-slate-900">{totalStock}</td>
+                              <td className="py-2 text-right">
+                                <span className={cn(
+                                  "px-2 py-0.5 rounded-[4px] font-black uppercase tracking-tighter text-[8px]",
+                                  colorClass
+                                )}>
+                                  {status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </CardContent>
               </Card>
             </div>

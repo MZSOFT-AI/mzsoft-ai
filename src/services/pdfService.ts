@@ -143,7 +143,8 @@ export const pdfService = {
     doc.setFont('helvetica', 'normal');
     doc.text(`N°: ${data.invoiceNumber}`, 5, currentY);
     currentY += 4;
-    doc.text(`Date: ${data.date.toLocaleString()}`, 5, currentY);
+    const receiptDate = (data.date instanceof Date) ? data.date : new Date();
+    doc.text(`Date: ${receiptDate.toLocaleString()}`, 5, currentY);
     currentY += 4;
     doc.text(`Client: ${data.customerName || 'Passager'}`, 5, currentY);
     currentY += 4;
@@ -238,7 +239,8 @@ export const pdfService = {
     // Dates
     doc.setFontSize(9);
     doc.setTextColor(255, 255, 255);
-    doc.text(`${data.date.toLocaleDateString()}`, pageWidth - 20, 35, { align: 'right' });
+    const dateToPrint = (data.date instanceof Date) ? data.date : new Date();
+    doc.text(`${dateToPrint.toLocaleDateString()}`, pageWidth - 20, 35, { align: 'right' });
     
     // --- Body ---
     const columnWidth = (pageWidth - 40) / 2;
@@ -416,10 +418,12 @@ export const pdfService = {
     doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
     doc.text(`NUMÉRO : ${data.quoteNumber}`, pageWidth - 20, 50, { align: 'right' });
-    doc.text(`DATE : ${data.date.toLocaleDateString()}`, pageWidth - 20, 55, { align: 'right' });
+    const qDate = (data.date instanceof Date) ? data.date : new Date();
+    doc.text(`DATE : ${qDate.toLocaleDateString()}`, pageWidth - 20, 55, { align: 'right' });
     if (data.expiryDate) {
       doc.setTextColor(220, 38, 38);
-      doc.text(`VALIDE JUSQU'AU : ${data.expiryDate.toLocaleDateString()}`, pageWidth - 20, 60, { align: 'right' });
+      const eDate = (data.expiryDate instanceof Date) ? data.expiryDate : new Date();
+      doc.text(`VALIDE JUSQU'AU : ${eDate.toLocaleDateString()}`, pageWidth - 20, 60, { align: 'right' });
     }
 
     doc.setDrawColor(240);
@@ -539,7 +543,8 @@ export const pdfService = {
     doc.text(data.customerName || 'Client de passage', 20, 68);
     
     doc.setFontSize(10);
-    doc.text(`Remboursé le : ${data.date.toLocaleString()}`, pageWidth - 20, 68, { align: 'right' });
+    const rDate = (data.date instanceof Date) ? data.date : new Date();
+    doc.text(`Remboursé le : ${rDate.toLocaleString()}`, pageWidth - 20, 68, { align: 'right' });
 
     // Table
     const tableData = data.items

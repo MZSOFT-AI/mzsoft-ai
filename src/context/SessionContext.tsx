@@ -91,48 +91,72 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => unsubscribe();
   }, [user, userData]);
 
+  const [isStarting, setIsStarting] = useState(false);
+
   const startSession = async (startingCash: number, selectedUser?: { uid: string, displayName: string }) => {
-    if (!user && !userData) return;
+    if ((!user && !userData) || isStarting) return;
 
-    // Check if there's already an active session to prevent double-opening
-    if (activeSession) {
-       throw new Error("Une session est déjà ouverte. Veuillez la clôturer d'abord.");
+    setIsStarting(true);
+    try {
+      const currentUid = user?.uid || userData?.uid || userData?.id || 'local_user';
+      const currentName = user?.displayName || userData?.displayName || 'Utilisateur';
+
+      const sessionUser = selectedUser || { uid: currentUid, displayName: currentName };
+      
+      // Double check specifically in Firestore if THIS user has an open session
+      const q = query(
+        collection(db, 'daily_closings'),
+        where('status', '==', 'open'),
+        where('userId', '==', sessionUser.uid),
+        limit(1)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        throw new Error(
+          sessionUser.uid === currentUid 
+            ? "Vous avez déjà une session ouverte. Veuillez la clôturer d'abord."
+            : `Une session est déjà ouverte pour ${sessionUser.displayName}.`
+        );
+      }
+
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const timestamp = serverTimestamp();
+      
+      const docRef = await addDoc(collection(db, 'daily_closings'), {
+        date: today,
+        userId: sessionUser.uid,
+        userName: sessionUser.displayName,
+        openedBy: currentUid, 
+        openedByName: currentName,
+        status: 'open',
+        startTime: timestamp,
+        startingCash,
+        cashSales: 0,
+        transferSales: 0,
+        totalSales: 0,
+        expenses: 0,
+        netCash: startingCash,
+        salesCount: 0,
+        createdAt: timestamp
+      });
+
+      // Log the session opening
+      await addDoc(collection(db, 'system_logs'), {
+        type: 'session_opened',
+        userId: currentUid,
+        userName: currentName,
+        timestamp: timestamp,
+        details: `Nouvelle session de caisse ouverte pour ${sessionUser.displayName} avec un fond de ${startingCash} DA`,
+        sessionId: docRef.id
+      });
+    } catch (error: any) {
+      console.error("Error starting session:", error);
+      throw error;
+    } finally {
+      setIsStarting(false);
     }
-
-    const currentUid = user?.uid || userData?.id || 'local_user';
-    const currentName = user?.displayName || userData?.displayName || 'Utilisateur';
-
-    const sessionUser = selectedUser || { uid: currentUid, displayName: currentName };
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const timestamp = serverTimestamp();
-    
-    const docRef = await addDoc(collection(db, 'daily_closings'), {
-      date: today,
-      userId: sessionUser.uid,
-      userName: sessionUser.displayName,
-      openedBy: currentUid, 
-      openedByName: currentName,
-      status: 'open',
-      startTime: timestamp,
-      startingCash,
-      cashSales: 0,
-      transferSales: 0,
-      totalSales: 0,
-      expenses: 0,
-      netCash: startingCash, // Initial net cash is the same as starting cash
-      salesCount: 0,
-      createdAt: timestamp
-    });
-
-    // Log the session opening
-    await addDoc(collection(db, 'system_logs'), {
-      type: 'session_opened',
-      userId: currentUid,
-      userName: currentName,
-      timestamp: timestamp,
-      details: `Nouvelle session de caisse ouverte pour ${sessionUser.displayName} avec un fond de ${startingCash} DA`,
-      sessionId: docRef.id
-    });
   };
 
   const getLastSessionClosingCash = async (): Promise<number> => {

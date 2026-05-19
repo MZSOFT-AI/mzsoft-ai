@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Sale, Product, AppNotification } from '../types';
 import { formatCurrency, cn, safeStringify } from '../lib/utils';
-import { notificationService } from '../services/notificationService';
 import { 
   TrendingUp, 
   Box, 
@@ -39,6 +39,7 @@ import { Button } from '../components/ui/Button';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, userData, isAdmin, hasPermission } = useAuth();
+  const { markAsRead, markAllAsRead } = useNotification();
   
   const [sales, setSales] = React.useState<Sale[]>([]);
   const [products, setProducts] = React.useState<Product[]>([]);
@@ -208,7 +209,7 @@ const Dashboard: React.FC = () => {
                </h2>
             </div>
             <button 
-              onClick={() => notificationService.markAllAsRead()} 
+              onClick={() => markAllAsRead()} 
               className="text-[11px] font-black uppercase text-rose-600 hover:text-rose-800 underline underline-offset-4 tracking-widest transition-colors"
             >
               Tout marquer comme lu
@@ -238,7 +239,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div className="flex justify-end">
                     <button 
-                      onClick={() => notificationService.markAsRead(notif.id!)}
+                      onClick={() => markAsRead(notif.id!)}
                       className="text-[11px] font-black uppercase text-blue-600 hover:text-blue-800 tracking-tighter"
                     >
                       ACQUITTER

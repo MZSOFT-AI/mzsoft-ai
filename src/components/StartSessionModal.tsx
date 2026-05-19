@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useSession } from '../context/SessionContext';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
+import { useNotification } from '../context/NotificationContext';
 import { Button } from './ui/Button';
-import { Wallet, LogIn, ArrowRight, ArrowLeft, Users, Shield, LogOut } from 'lucide-react';
+import { Wallet, LogIn, ArrowRight, ArrowLeft, Users, Shield, LogOut, Loader2 } from 'lucide-react';
 import { formatCurrency, safeStringify } from '../lib/utils';
 import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -18,10 +19,12 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
   const { startSession } = useSession();
   const { user, userData, isAdmin, logout } = useAuth();
   const { settings } = useSettings();
+  const { showToast } = useNotification();
   const navigate = useNavigate();
   const [startingCash, setStartingCash] = useState<number>(0);
   const [estimatedStartingCash, setEstimatedStartingCash] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableUsers, setAvailableUsers] = useState<UserData[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
 
@@ -88,10 +91,19 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
 
   const canStart = !settings.lockSessions || isAdmin;
 
-  const handleStart = () => {
-    if (!canStart) return;
-    const selectedUser = availableUsers.find(u => u.id === selectedUserId);
-    startSession(startingCash, selectedUser ? { uid: selectedUser.id, displayName: selectedUser.displayName || 'Vendeur' } : undefined);
+  const handleStart = async () => {
+    if (!canStart || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const selectedUser = availableUsers.find(u => u.id === selectedUserId);
+      await startSession(startingCash, selectedUser ? { uid: selectedUser.id, displayName: selectedUser.displayName || 'Vendeur' } : undefined);
+      showToast("Session ouverte avec succès", "success");
+    } catch (error: any) {
+      showToast(error.message || "Erreur lors de l'ouverture de la session", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -123,7 +135,8 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
               <select
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
-                className="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-blue-500"
+                disabled={isSubmitting}
+                className="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-blue-500 disabled:opacity-50"
               >
                 {availableUsers.map(u => (
                   <option key={u.id} value={u.id}>
@@ -141,8 +154,9 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
               <input
                 type="number"
                 value={startingCash}
+                disabled={isSubmitting}
                 onChange={(e) => setStartingCash(Number(e.target.value))}
-                className="w-full pl-16 pr-6 py-5 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:border-blue-500 font-black text-3xl text-slate-800"
+                className="w-full pl-16 pr-6 py-5 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:border-blue-500 font-black text-3xl text-slate-800 disabled:opacity-50"
                 autoFocus
               />
             </div>
@@ -163,15 +177,22 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
           <div className="flex flex-col gap-3">
             <Button 
               onClick={handleStart}
-              disabled={loading || !canStart}
-              className="w-full h-16 bg-slate-900 hover:bg-black text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-slate-200 group"
+              disabled={loading || !canStart || isSubmitting}
+              className="w-full h-16 bg-slate-900 hover:bg-black text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-slate-200 group relative overflow-hidden"
             >
-              Démarrer la Session <LogIn size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+              {isSubmitting ? (
+                <Loader2 className="animate-spin" size={24} />
+              ) : (
+                <>
+                  Démarrer la Session <LogIn size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </Button>
             
             <Button
               variant="ghost"
               onClick={() => navigate('/')}
+              disabled={isSubmitting}
               className="w-full h-10 text-slate-400 hover:text-slate-600 font-bold uppercase tracking-widest text-[10px]"
             >
               <ArrowLeft size={14} className="mr-2" /> Retour au Tableau de Bord
@@ -180,6 +201,7 @@ const StartSessionModal: React.FC<StartSessionModalProps> = ({ isOpen }) => {
             <Button
               variant="ghost"
               onClick={logout}
+              disabled={isSubmitting}
               className="w-full h-10 text-rose-400 hover:text-rose-600 hover:bg-rose-50 font-bold uppercase tracking-widest text-[10px]"
             >
               <LogOut size={14} className="mr-2" /> Quitter le Logiciel

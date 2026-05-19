@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where } from 'firebase/firestore';
+import { useLocation } from 'react-router-dom';
+import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { cleanObject, formatCurrency, cn } from '../lib/utils';
@@ -7,8 +8,8 @@ import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { pdfService } from '../services/pdfService';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter, ShoppingCart } from 'lucide-react';
-import { format } from 'date-fns';
+import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter, ShoppingCart, Users, Layers } from 'lucide-react';
+import { format, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
@@ -18,12 +19,18 @@ import { useNotification } from '../context/NotificationContext';
 export default function SalesHistory() {
   const { user, userData, isAdmin, hasPermission } = useAuth();
   const { showToast } = useNotification();
+  const location = useLocation();
   const [sales, setSales] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'pos' | 'invoice'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'pos' | 'invoice' | 'quote'>('all');
+  const [groupBy, setGroupBy] = useState<'day' | 'session'>('day');
+  const [userFilter, setUserFilter] = useState<string>('all');
+  const [sessionFilter, setSessionFilter] = useState<string>('all');
   const [isReturning, setIsReturning] = useState(false);
   const [returnItemModal, setReturnItemModal] = useState<{ sale: any, item: any } | null>(null);
   const [returnAllModal, setReturnAllModal] = useState<any | null>(null);
@@ -46,21 +53,47 @@ export default function SalesHistory() {
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('mode') === 'return') {
+      setShowSearchById(true);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
     const currentUid = user?.uid || userData?.id;
     if (!currentUid) return;
 
     const baseQuery = collection(db, 'sales');
     const q = isAdmin 
-      ? query(baseQuery, orderBy('createdAt', 'desc'), limit(200))
-      : query(baseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'), limit(200));
+      ? query(baseQuery, orderBy('createdAt', 'desc'), limit(500))
+      : query(baseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'), limit(500));
 
-    return onSnapshot(
+    const unsubSales = onSnapshot(
       q, 
       (snapshot) => {
         setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'sales')
     );
+
+    // If admin, fetch sessions and users for filtering
+    let unsubSessions = () => {};
+    if (isAdmin) {
+      const sessQ = query(collection(db, 'daily_closings'), orderBy('startTime', 'desc'), limit(100));
+      unsubSessions = onSnapshot(sessQ, (snapshot) => {
+        setSessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+
+      // Fetch users for filtering
+      getDocs(collection(db, 'users')).then(snap => {
+        setUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+    }
+
+    return () => {
+      unsubSales();
+      unsubSessions();
+    };
   }, [user, userData, isAdmin]);
 
   useEffect(() => {
@@ -280,6 +313,10 @@ export default function SalesHistory() {
     
     if (!matchesSearch) return false;
 
+    // Advanced Filters
+    if (userFilter !== 'all' && s.userId !== userFilter) return false;
+    if (sessionFilter !== 'all' && s.sessionId !== sessionFilter) return false;
+
     if (startDate || endDate) {
       const saleDate = s.createdAt?.toDate ? s.createdAt.toDate() : (s.createdAt ? new Date(s.createdAt) : new Date());
       
@@ -297,8 +334,9 @@ export default function SalesHistory() {
     }
 
     if (sourceFilter !== 'all') {
-      if (sourceFilter === 'pos' && s.source === 'invoice') return false;
+      if (sourceFilter === 'pos' && s.source !== 'pos' && s.source !== undefined) return false;
       if (sourceFilter === 'invoice' && s.source !== 'invoice') return false;
+      if (sourceFilter === 'quote' && s.source !== 'quote') return false;
     }
 
     return true;
@@ -311,20 +349,47 @@ export default function SalesHistory() {
     return isNaN(d.getTime()) ? new Date() : d;
   };
 
-  const [expandedDays, setExpandedDays] = useState<string[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
 
-  // Toggle day expansion
-  const toggleDay = (day: string) => {
-    setExpandedDays(prev => 
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+  // Toggle group expansion
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => 
+      prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]
     );
   };
 
-  const groupedSales = filteredSales.reduce((acc: any, sale) => {
-    const dateObj = getSafeDate(sale.createdAt);
-    const dateKey = format(dateObj, 'yyyy-MM-dd');
-    if (!acc[dateKey]) {
-      acc[dateKey] = {
+  const groupedData = filteredSales.reduce((acc: any, sale) => {
+    let key = '';
+    let label = '';
+    let sublabel = '';
+    let dateObj = getSafeDate(sale.createdAt);
+
+    if (groupBy === 'day') {
+      key = format(dateObj, 'yyyy-MM-dd');
+      label = format(dateObj, 'EEEE dd MMMM yyyy', { locale: fr });
+    } else {
+      // Group by session
+      key = sale.sessionId || 'legacy';
+      if (key === 'legacy') {
+        label = "Ventes Hors Session / Anciennes";
+        sublabel = "Ventes effectuées avant l'activation du système de session";
+      } else {
+        const session = sessions.find(sess => sess.id === key);
+        if (session) {
+          label = `Session de ${session.userName}`;
+          sublabel = `Ouverte le ${format(getSafeDate(session.startTime), 'dd/MM/yyyy HH:mm')}${session.endTime ? ` - Close le ${format(getSafeDate(session.endTime), 'HH:mm')}` : ' (En cours)'}`;
+        } else {
+          label = `Session ${key}`;
+          sublabel = "Détails session introuvables";
+        }
+      }
+    }
+
+    if (!acc[key]) {
+      acc[key] = {
+        key,
+        label,
+        sublabel,
         date: dateObj,
         sales: [],
         total: 0,
@@ -333,22 +398,28 @@ export default function SalesHistory() {
         partiallyReturned: 0
       };
     }
-    acc[dateKey].sales.push(sale);
-    acc[dateKey].total += sale.totalAmount;
-    acc[dateKey].count += 1;
-    if (sale.status === 'returned') acc[dateKey].returns += 1;
-    if (sale.status === 'partially_returned') acc[dateKey].partiallyReturned += 1;
+    acc[key].sales.push(sale);
+    acc[key].total += sale.totalAmount;
+    acc[key].count += 1;
+    if (sale.status === 'returned') acc[key].returns += 1;
+    if (sale.status === 'partially_returned') acc[key].partiallyReturned += 1;
     return acc;
   }, {});
 
-  const sortedDays = Object.keys(groupedSales).sort((a, b) => b.localeCompare(a));
+  const sortedKeys = Object.keys(groupedData).sort((a, b) => {
+    if (groupBy === 'day') return b.localeCompare(a);
+    // For sessions, sort by date of first sale in session or session start if available
+    const dateA = groupedData[a].date;
+    const dateB = groupedData[b].date;
+    return dateB.getTime() - dateA.getTime();
+  });
 
-  // Initialize first day as expanded if there are sales
+  // Initialize first group as expanded if there are sales
   useEffect(() => {
-    if (sortedDays.length > 0 && expandedDays.length === 0) {
-      setExpandedDays([sortedDays[0]]);
+    if (sortedKeys.length > 0 && expandedGroups.length === 0) {
+      setExpandedGroups([sortedKeys[0]]);
     }
-  }, [sortedDays]);
+  }, [sortedKeys, groupBy]);
 
   const handleDownloadInvoice = (sale: any) => {
     const saleData = {
@@ -441,8 +512,8 @@ export default function SalesHistory() {
       </Modal>
 
       {/* Filter Bar */}
-      <div className="bg-white border border-slate-200 p-4">
-          <div className="flex flex-col md:flex-row gap-4">
+      <div className="bg-white border border-slate-200">
+          <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -453,7 +524,8 @@ export default function SalesHistory() {
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            
+            <div className="flex gap-2">
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 px-3 py-2">
                 <Calendar size={14} className="text-slate-400" />
                 <input 
@@ -469,20 +541,11 @@ export default function SalesHistory() {
                   onChange={(e) => setEndDate(e.target.value)}
                   className="bg-transparent text-[10px] font-black uppercase outline-none"
                 />
-                {(startDate || endDate) && (
-                  <button 
-                    onClick={() => { setStartDate(''); setEndDate(''); }} 
-                    className="ml-1 text-slate-400 hover:text-rose-500 transition-colors"
-                    title="Réinitialiser les dates"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
-                )}
               </div>
               <Button 
                 variant="outline" 
                 size="sm" 
-                className={`h-full text-[10px] font-black uppercase ${startDate || endDate ? 'bg-blue-50 border-blue-200 text-blue-600' : ''}`}
+                className="h-full text-[10px] font-black uppercase"
                 onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
                   setStartDate(today);
@@ -491,36 +554,98 @@ export default function SalesHistory() {
               >
                 Aujourd'hui
               </Button>
-              <div className="flex gap-1 bg-slate-50 border border-slate-300 p-1">
+            </div>
+          </div>
+
+          <div className="p-4 bg-slate-50 flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase text-slate-400 whitespace-nowrap">Source:</span>
+              <div className="flex gap-1 bg-white border border-slate-200 p-1">
+                {['all', 'pos', 'invoice', 'quote'].map((s: any) => (
+                  <button 
+                    key={s}
+                    onClick={() => setSourceFilter(s)}
+                    className={cn(
+                      "px-3 py-1 text-[9px] font-black uppercase transition-colors rounded",
+                      sourceFilter === s ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-600"
+                    )}
+                  >
+                    {s === 'all' ? 'Toutes' : s === 'pos' ? 'Caisse' : s === 'quote' ? 'Devis' : 'Facture'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase text-slate-400 whitespace-nowrap">Grouper par:</span>
+              <div className="flex gap-1 bg-white border border-slate-200 p-1 font-mono">
                 <button 
-                  onClick={() => setSourceFilter('all')}
+                  onClick={() => setGroupBy('day')}
                   className={cn(
-                    "px-3 py-1 text-[10px] font-black uppercase transition-colors",
-                    sourceFilter === 'all' ? "bg-slate-800 text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
+                    "px-3 py-1 text-[9px] font-black uppercase transition-colors rounded flex items-center gap-1",
+                    groupBy === 'day' ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-600"
                   )}
                 >
-                  Tous
+                  <Calendar size={12} /> Jour
                 </button>
                 <button 
-                  onClick={() => setSourceFilter('pos')}
+                  onClick={() => setGroupBy('session')}
                   className={cn(
-                    "px-3 py-1 text-[10px] font-black uppercase transition-colors",
-                    sourceFilter === 'pos' ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
+                    "px-3 py-1 text-[9px] font-black uppercase transition-colors rounded flex items-center gap-1",
+                    groupBy === 'session' ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-600"
                   )}
                 >
-                  Caisse
-                </button>
-                <button 
-                  onClick={() => setSourceFilter('invoice')}
-                  className={cn(
-                    "px-3 py-1 text-[10px] font-black uppercase transition-colors",
-                    sourceFilter === 'invoice' ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
-                  )}
-                >
-                  Facture
+                  <Layers size={12} /> Session
                 </button>
               </div>
             </div>
+
+            {isAdmin && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase text-slate-400 whitespace-nowrap">Vendeur:</span>
+                  <select 
+                    value={userFilter}
+                    onChange={(e) => setUserFilter(e.target.value)}
+                    className="bg-white border border-slate-200 text-[10px] font-black uppercase p-1.5 outline-none rounded"
+                  >
+                    <option value="all">Tous les vendeurs</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>{u.displayName || u.username || u.username_p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase text-slate-400 whitespace-nowrap">Session:</span>
+                  <select 
+                    value={sessionFilter}
+                    onChange={(e) => setSessionFilter(e.target.value)}
+                    className="bg-white border border-slate-200 text-[10px] font-black uppercase p-1.5 outline-none rounded max-w-[150px]"
+                  >
+                    <option value="all">Toutes les sessions</option>
+                    {sessions.map(s => (
+                      <option key={s.id} value={s.id}>{s.date} - {s.userName}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+
+            <button 
+              onClick={() => {
+                setSearchQuery('');
+                setStartDate('');
+                setEndDate('');
+                setSourceFilter('all');
+                setUserFilter('all');
+                setSessionFilter('all');
+                setGroupBy('day');
+              }}
+              className="ml-auto text-[10px] font-black uppercase text-rose-500 hover:underline flex items-center gap-1"
+            >
+              <RotateCcw size={12} /> Réinitialiser
+            </button>
           </div>
       </div>
 
@@ -550,34 +675,40 @@ export default function SalesHistory() {
         </div>
       </div>
 
-      {/* Daily Grouped View */}
+      {/* Grouped View */}
       <div className="space-y-6">
-        {sortedDays.map((dayKey) => {
-          const dayData = groupedSales[dayKey];
-          const isExpanded = expandedDays.includes(dayKey);
+        {sortedKeys.map((groupKey) => {
+          const groupData = groupedData[groupKey];
+          const isExpanded = expandedGroups.includes(groupKey);
 
           return (
-            <div key={dayKey} className="bg-white border border-slate-200 overflow-hidden shadow-sm">
-              {/* Day Header */}
+            <div key={groupKey} className="bg-white border border-slate-200 overflow-hidden shadow-sm">
+              {/* Group Header */}
               <div 
-                onClick={() => toggleDay(dayKey)}
+                onClick={() => toggleGroup(groupKey)}
                 className="bg-slate-50 p-4 flex flex-col md:flex-row justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors border-b border-slate-200"
               >
                 <div className="flex items-center gap-3">
-                  <div className="bg-blue-600 text-white p-2">
-                    <Calendar size={18} />
+                  <div className={cn(
+                    "p-2 text-white",
+                    groupBy === 'day' ? "bg-blue-600" : "bg-indigo-600"
+                  )}>
+                    {groupBy === 'day' ? <Calendar size={18} /> : <Layers size={18} />}
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter">
-                      {format(dayData.date, 'EEEE dd MMMM yyyy', { locale: fr })}
+                    <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter leading-tight">
+                      {groupData.label}
                     </h3>
                     <div className="flex gap-4 mt-0.5">
+                       {groupData.sublabel && (
+                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{groupData.sublabel}</span>
+                       )}
                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                         <span className="text-blue-600">{dayData.count}</span> Ventes Effectuées
+                         <span className="text-blue-600">{groupData.count}</span> Ventes 
                        </span>
-                       {dayData.returns > 0 && (
+                       {groupData.returns > 0 && (
                          <span className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">
-                           <span className="text-rose-600">{dayData.returns}</span> Annulations
+                           <span className="text-rose-600">{groupData.returns}</span> Annulées
                          </span>
                        )}
                     </div>
@@ -586,11 +717,11 @@ export default function SalesHistory() {
                 
                 <div className="flex items-center gap-6 mt-4 md:mt-0">
                   <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Journalier</p>
-                    <p className="text-xl font-black text-slate-900 tracking-tighter">{formatCurrency(dayData.total)}</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Cumulé</p>
+                    <p className="text-xl font-black text-slate-900 tracking-tighter">{formatCurrency(groupData.total)}</p>
                   </div>
                   <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-                    <Filter size={16} className="text-slate-400" />
+                    <Eye size={16} className="text-slate-400" />
                   </div>
                 </div>
               </div>
@@ -601,7 +732,7 @@ export default function SalesHistory() {
                   <table className="mzsoft-table w-full">
                     <thead>
                       <tr>
-                        <th className="pl-6">Heure</th>
+                        <th className="pl-6">Instant</th>
                         <th>Type</th>
                         <th>ID Document</th>
                         <th>Opérateur</th>
@@ -613,7 +744,7 @@ export default function SalesHistory() {
                       </tr>
                     </thead>
                     <tbody>
-                      {dayData.sales.map((sale: any) => (
+                      {groupData.sales.map((sale: any) => (
                         <tr key={sale.id} className="hover:bg-blue-50/50 transition-colors">
                           <td className="pl-6 text-xs text-slate-400 italic">
                             {format(getSafeDate(sale.createdAt), 'HH:mm')}
@@ -623,6 +754,10 @@ export default function SalesHistory() {
                               <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 px-1.5 py-0.5 bg-emerald-50 border border-emerald-100 uppercase tracking-tighter w-fit">
                                 <FileText size={10} /> Facture
                               </span>
+                            ) : sale.source === 'quote' ? (
+                              <span className="flex items-center gap-1 text-[9px] font-black text-amber-600 px-1.5 py-0.5 bg-amber-50 border border-amber-100 uppercase tracking-tighter w-fit">
+                                <FileText size={10} /> Devis
+                              </span>
                             ) : (
                               <span className="flex items-center gap-1 text-[9px] font-black text-blue-600 px-1.5 py-0.5 bg-blue-50 border border-blue-100 uppercase tracking-tighter w-fit">
                                 <ShoppingCart size={10} /> Caisse
@@ -631,9 +766,14 @@ export default function SalesHistory() {
                           </td>
                           <td className="font-mono text-[10px] font-bold text-slate-500">{sale.id}</td>
                           <td>
-                            <span className="text-[9px] font-black text-slate-600 bg-slate-100 px-2 py-0.5 border border-slate-200 uppercase">
-                              {sale.userName || 'Admin'}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-slate-600 bg-slate-100 px-2 py-0.5 border border-slate-200 uppercase w-fit">
+                                {sale.userName || 'Admin'}
+                              </span>
+                              {isAdmin && sale.sessionId && (
+                                <span className="text-[8px] text-slate-400 font-mono mt-0.5">Sess: {sale.sessionId.substring(0, 8)}...</span>
+                              )}
+                            </div>
                           </td>
                           <td className="text-xs font-bold text-slate-700">
                              {sale.customerName || 'Client de passage'}
@@ -667,7 +807,7 @@ export default function SalesHistory() {
           );
         })}
 
-        {sortedDays.length === 0 && (
+        {sortedKeys.length === 0 && (
           <div className="bg-white border border-slate-200 p-20 text-center flex flex-col items-center gap-4">
              <div className="bg-slate-50 p-6 rounded-full">
                <History size={48} className="text-slate-200" />
@@ -690,6 +830,8 @@ export default function SalesHistory() {
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Type</p>
                     {selectedSale.source === 'invoice' ? (
                       <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-100 italic">Facture</span>
+                    ) : selectedSale.source === 'quote' ? (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-100 italic">Devis Confirmé</span>
                     ) : (
                       <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 italic">Vente Caisse</span>
                     )}

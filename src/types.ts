@@ -47,7 +47,7 @@ export interface Product extends BaseEntity {
   sellingPrice: number;
   stockQuantity: number;
   minStockLevel: number;
-  unit?: 'u' | 'm' | 'ml' | 'kg' | 'l';
+  unit?: 'u' | 'm' | 'ml' | 'kg' | 'l' | 'g' | 'bt' | 'pq' | 'ans';
   sellInML?: boolean;
   unitsPerRoll?: number;
   pricePerML?: number;

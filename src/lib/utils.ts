@@ -64,8 +64,8 @@ export function cleanObject(obj: any): any {
  * Manually traverses the object to avoid circularity issues before JSON.stringify
  */
 export function safeStringify(obj: any): string {
-  // Use a Set to track visited objects for circularity detection
-  const cache = new Set();
+  // Use a WeakSet to track visited objects for circularity detection (avoids memory leaks)
+  const cache = new WeakSet();
   
   const replacer = (key: string, value: any) => {
     // Handle null/undefined immediately
@@ -76,8 +76,7 @@ export function safeStringify(obj: any): string {
       if (cache.has(value)) {
         return '[Circular]';
       }
-      cache.add(value);
-
+      
       // Handle common circular/complex types that shouldn't be stringified deeply
       if (typeof window !== 'undefined') {
         if (value === window) return '[Window]';
@@ -109,14 +108,18 @@ export function safeStringify(obj: any): string {
           // Special handling for Firestore objects
           if (typeof value.toDate === 'function') return value.toDate().toISOString();
           
-          // For other complex objects (especially minified ones like Y2, Ka), return just the name
-          if (constructorName.length < 3) { 
-             return `[Complex Object: ${constructorName}]`;
+          // For other complex objects (especially minified ones like Y2, Ka from Firestore), return just the name
+          // Minified names are usually very short (1-2 chars) or contain underscores
+          if (constructorName.length <= 2 || constructorName.includes('_')) { 
+             return `[Internal Object: ${constructorName}]`;
           }
         }
       } catch (e) {
         return '[Uninspectable Object]';
       }
+
+      // Only add to cache if it's an object we might visit again (not converted to primitive yet)
+      cache.add(value);
     }
     return value;
   };
@@ -125,7 +128,7 @@ export function safeStringify(obj: any): string {
     return JSON.stringify(obj, replacer, 2);
   } catch (err) {
     try {
-      // Fallback for extreme cases
+      // Fallback for extreme cases: use String() which handles circularity by just printing the top level
       return `[Serialization Failure: ${String(err)}]`;
     } catch {
       return '[Total Serialization Failure]';

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, CheckCircle2, AlertCircle, Info, AlertTriangle, Bell } from 'lucide-react';
-import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { AppNotification } from '../types';
 import { useAuth } from './AuthContext';
@@ -117,11 +117,35 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const markAllAsRead = async () => {
     try {
-      const unread = notifications.filter(n => n.status === 'unread' || !n.isRead);
-      const promises = unread.map(n => markAsRead(n.id));
+      // First mark the current loaded ones for immediate UI feedback
+      const localUnread = notifications.filter(n => n.status === 'unread' || !n.isRead);
+      setNotifications(prev => prev.map(n => 
+        (n.status === 'unread' || !n.isRead) ? { ...n, status: 'read', isRead: true } : n
+      ));
+      setUnreadCount(0);
+
+      // Then actually update all unread in Firestore
+      let q = query(
+        collection(db, 'notifications'), 
+        where('status', '==', 'unread')
+      );
+      
+      if (!isAdmin && !isSuperAdmin && user) {
+        q = query(q, where('userId', '==', user.uid));
+      }
+      
+      const snap = await getDocs(q);
+      const promises = snap.docs.map(d => updateDoc(d.ref, { 
+        isRead: true, 
+        status: 'read',
+        updatedAt: serverTimestamp() 
+      }));
+      
       await Promise.all(promises);
+      showToast('Toutes les notifications ont été marquées comme lues', 'success');
     } catch (error) {
       console.error('Error marking all read:', error);
+      showToast('Erreur lors du marquage des notifications', 'error');
     }
   };
 

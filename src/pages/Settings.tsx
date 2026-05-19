@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/Badge';
 import { 
   User, 
   Users,
+  Award,
   Settings as SettingsIcon, 
   Bell, 
   Shield, 
@@ -557,8 +558,8 @@ export default function Settings() {
                               <Coins size={18} className="text-blue-600" />
                             </div>
                             <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tighter">Appliquer la TVA</p>
-                              <p className="text-xs text-slate-500">Activer le calcul automatique de la TVA sur les documents.</p>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tighter">Activer la TVA</p>
+                              <p className="text-xs text-slate-500">Calculer automatiquement la TVA (Taxes) sur les documents.</p>
                             </div>
                           </div>
                           <button
@@ -576,7 +577,7 @@ export default function Settings() {
                         
                         {businessForm.useTax && (
                           <div className="flex items-center justify-between pt-2 border-t border-blue-100 dark:border-blue-900/30">
-                            <label className="text-xs font-bold text-slate-600 uppercase">Taux de TVA (%)</label>
+                            <label className="text-xs font-bold text-slate-600 uppercase">Taux de TVA par défaut (%)</label>
                             <input 
                               type="number"
                               value={businessForm.taxRate}
@@ -1000,7 +1001,87 @@ export default function Settings() {
             </Card>
           )}
 
-          {(activeTab !== 'profile' && activeTab !== 'security' && activeTab !== 'users' && activeTab !== 'system' && activeTab !== 'notifications' && activeTab !== 'business') && (
+          {activeTab === 'about' && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* App Info Card */}
+                <Card className="md:col-span-1 border-slate-200 dark:border-slate-800 overflow-hidden">
+                  <div className="p-6 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <h2 className="font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider text-sm flex items-center gap-2">
+                      <Award size={18} className="text-indigo-600" />
+                      MZSOFT_Gestion de Stock
+                    </h2>
+                    <Badge className="bg-indigo-100 text-indigo-700 text-[10px] font-black border-indigo-200 uppercase">
+                      V 1.0.1
+                    </Badge>
+                  </div>
+                  <CardContent className="p-8 space-y-6">
+                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                      Application de gestion commerciale professionnelle permettant la gestion complète du stock, 
+                      des ventes, des factures, des devis et des opérations de caisse. 
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-4 pt-4">
+                      <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Développeur</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200">SARL MZ TECH SECURITY</p>
+                      </div>
+                      <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Dernière mise à jour</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Mai 2026</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Support & License */}
+                <div className="space-y-6">
+                  <Card className="border-slate-200 dark:border-slate-800 p-6 overflow-hidden relative">
+                    <div className="absolute top-0 right-0 p-4 opacity-5">
+                      <Shield size={64} className="text-slate-900 dark:text-white" />
+                    </div>
+                    <h3 className="font-black text-slate-900 dark:text-white uppercase text-xs mb-4 flex items-center gap-2">
+                      <Shield size={16} className="text-emerald-600" />
+                      Licence
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed italic border-l-2 border-emerald-500 pl-4 py-1">
+                      © 2026 SARL MZ TECH SECURITY. <br/>
+                      Tous droits réservés.
+                    </p>
+                  </Card>
+
+                  <Card className="border-slate-200 dark:border-slate-800 p-6">
+                    <h3 className="font-black text-slate-900 dark:text-white uppercase text-xs mb-4 flex items-center gap-2">
+                      <Mail size={16} className="text-indigo-600" />
+                      Support
+                    </h3>
+                    <a 
+                      href="mailto:SARLMZTECHSECURITY@GMAIL.COM" 
+                      className="group block p-4 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-600 rounded-xl border border-indigo-100 dark:border-indigo-900/30 hover:border-indigo-600 transition-all duration-300"
+                    >
+                      <p className="text-[10px] font-black text-indigo-600 group-hover:text-indigo-100 uppercase mb-1 transition-colors">Contact</p>
+                      <p className="text-xs font-bold text-slate-900 dark:text-slate-200 group-hover:text-white transition-colors break-all">SARLMZTECHSECURITY@GMAIL.COM</p>
+                    </a>
+                  </Card>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 rounded-2xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                <div className="relative z-10">
+                  <h4 className="text-xl font-black uppercase tracking-tight mb-2">Besoin d'aide ?</h4>
+                  <p className="text-slate-400 text-sm max-w-md">
+                    Consultez notre documentation en ligne ou contactez notre équipe technique.
+                  </p>
+                </div>
+                <button className="relative z-10 px-8 py-3 bg-white text-slate-900 font-black uppercase text-xs rounded-xl hover:bg-indigo-50 transition-colors shadow-xl shadow-white/5">
+                  Documentation
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(activeTab !== 'profile' && activeTab !== 'security' && activeTab !== 'users' && activeTab !== 'system' && activeTab !== 'notifications' && activeTab !== 'business' && activeTab !== 'about') && (
             <Card className="border-slate-200 dark:border-slate-800">
               <CardContent className="p-20 text-center text-slate-400">
                 <SettingsIcon size={48} className="mx-auto mb-4 opacity-10 animate-spin-slow" />

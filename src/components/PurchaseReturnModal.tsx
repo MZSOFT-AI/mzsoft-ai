@@ -137,7 +137,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] uppercase font-black text-slate-300">Stock Actuel</p>
-                    <p className="font-black text-slate-600">{Number(p.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[9px] font-normal">{p.sellInML ? 'u' : (p.unit || 'u')}</span></p>
+                    <p className="font-black text-slate-600">{Number(p.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[9px] font-normal">{p.unit || 'u'}</span></p>
                   </div>
                 </button>
               ))}
@@ -206,7 +206,7 @@ const PurchaseReturnModal: React.FC<PurchaseReturnModalProps> = ({ isOpen, onClo
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Impact sur le Stock</p>
               <p className="text-xl font-black text-rose-600">
-                {Number(selectedProduct.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} {selectedProduct.sellInML ? 'u' : (selectedProduct.unit || 'u')} &rarr; {(Number(selectedProduct.stockQuantity) - (Number(quantityToReturn) || 0)).toFixed(2).replace(/\.00$/, '')} {selectedProduct.sellInML ? 'u' : (selectedProduct.unit || 'u')}
+                {Number(selectedProduct.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} {selectedProduct.unit || 'u'} &rarr; {(Number(selectedProduct.stockQuantity) - (Number(quantityToReturn) || 0)).toFixed(2).replace(/\.00$/, '')} {selectedProduct.unit || 'u'}
               </p>
             </div>
 

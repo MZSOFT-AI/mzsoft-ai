@@ -362,7 +362,7 @@ const Invoices: React.FC = () => {
             customerNIF: customClientInfo.nif,
             customerRC: customClientInfo.rc,
             customerAI: customClientInfo.ai,
-            createdAt: new Date(),
+            date: new Date(),
             dueDate: dueDate ? new Date(dueDate) : undefined,
             paymentMethod,
             userName: userData?.displayName || user?.displayName || 'Admin',

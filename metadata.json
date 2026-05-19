@@ -1,6 +1,6 @@
 {
-  "name": "MZ SOFT",
-  "description": "Système de gestion professionnel MZ SOFT : Ventes, Stock, POS, Factures PDF et Analytics.",
+  "name": "MZSOFT_Gestion de Stock et Vente",
+  "description": "Application de gestion commerciale permettant la gestion du stock, des ventes, des factures, des devis et des opérations de caisse avec un suivi simple, rapide et sécurisé.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
