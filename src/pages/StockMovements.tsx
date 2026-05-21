@@ -123,6 +123,45 @@ export default function StockMovements() {
     }
   };
 
+  const handleExportMovements = async () => {
+    try {
+      const data = filteredMovements.map(m => {
+        const typeInfo = STOCK_TYPES[m.type] || { label: m.type };
+        const isPositive = m.newStock > m.previousStock;
+        const formattedDate = m.createdAt ? format((m.createdAt as any)?.toDate ? (m.createdAt as any).toDate() : (m.createdAt instanceof Date ? m.createdAt : new Date()), 'dd/MM/yyyy HH:mm') : '-';
+        return {
+          date: formattedDate,
+          productName: m.productName || '-',
+          typeLabel: typeInfo.label.toUpperCase(),
+          previousStock: m.previousStock,
+          movementQty: (isPositive ? '+' : '-') + Math.abs(m.quantity || 0),
+          newStock: m.newStock,
+          userName: m.userName || 'Admin'
+        };
+      });
+
+      await excelService.generateProfessionalReport({
+        filename: `Flux_Stocks_${format(new Date(), 'yyyyMMdd')}`,
+        title: 'JOURNAL DES MOUVEMENTS ET FLUX DE STOCKS',
+        subtitle: `Rapport de traçabilité logistique au ${format(new Date(), 'dd/MM/yyyy HH:mm')}`,
+        columns: [
+          { header: 'Date & Heure', key: 'date', width: 22 },
+          { header: 'Désignation Article', key: 'productName', width: 35 },
+          { header: 'Nature du Flux', key: 'typeLabel', width: 20 },
+          { header: 'Stock Initial', key: 'previousStock', width: 15 },
+          { header: 'Quantité Mouvementée', key: 'movementQty', width: 20 },
+          { header: 'Stock Final', key: 'newStock', width: 15 },
+          { header: 'Opérateur', key: 'userName', width: 20 }
+        ],
+        data
+      });
+      showToast("Rapport des mouvements exporté avec succès", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("Erreur lors de l'export", "error");
+    }
+  };
+
   const filteredMovements = movements.filter(m => {
     const searchLow = searchQuery.toLowerCase();
     const matchesSearch = 

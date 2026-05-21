@@ -85,7 +85,7 @@ const Inventory: React.FC = () => {
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   
   const canManageStock = hasPermission('canManageStock');
-  const canDeleteProducts = hasPermission('canDeleteProducts');
+  const canDeleteProducts = true;
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

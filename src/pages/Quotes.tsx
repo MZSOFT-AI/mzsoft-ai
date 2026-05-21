@@ -45,6 +45,7 @@ const Quotes: React.FC = () => {
   const { data: customers } = useCollection<Customer>('customers', [orderBy('name')]);
   const { data: projects } = useCollection<Project>('projects', [orderBy('name')]);
 
+  const [showList, setShowList] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -419,88 +420,114 @@ const Quotes: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {quotesLoading ? (
-           Array(6).fill(0).map((_, i) => (
-             <div key={i} className="h-48 bg-white border border-slate-100 animate-pulse" />
-           ))
-        ) : (filteredQuotes || []).length === 0 ? (
-          <div className="col-span-full py-20 text-center bg-white border-2 border-dashed border-slate-200">
-            <FilePlus size={48} className="mx-auto text-slate-300 mb-3" />
-            <p className="text-slate-500 font-bold">Aucun devis trouvé.</p>
+      {/* Hidden Table for Quotes */}
+      <div className="border border-slate-200 bg-white overflow-hidden shadow-sm mb-12">
+        <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">📜 Liste / Tableau des Devis</span>
           </div>
-        ) : (filteredQuotes || []).map((quote) => (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            key={quote.id}
-            className="bg-white border border-slate-200 p-5 hover:border-blue-400 transition-all group relative cursor-pointer"
-            onClick={() => { setSelectedQuote(quote); setIsViewModalOpen(true); }}
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowList(!showList)} 
+            className="text-xs uppercase font-extrabold tracking-wider border-slate-350 bg-white hover:bg-slate-100 px-4 py-2 h-9"
           >
-            <div className="flex justify-between items-start mb-4">
-              <span className={cn(
-                "px-2 py-1 text-[9px] font-black uppercase tracking-widest border",
-                quote.status === 'draft' ? "bg-slate-100 text-slate-600 border-slate-200" :
-                quote.status === 'sent' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                quote.status === 'accepted' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                quote.status === 'converted' ? "bg-purple-50 text-purple-600 border-purple-100" :
-                "bg-rose-50 text-rose-600 border-rose-100"
-              )}>
-                {quote.status}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400 font-mono">
-                {quote.createdAt ? format((quote.createdAt as any)?.toDate ? (quote.createdAt as any).toDate() : (quote.createdAt instanceof Date ? quote.createdAt : new Date()), 'dd/MM/yyyy') : '-'}
-              </span>
-            </div>
+            {showList ? '🙈 Masquer la liste (Cacher)' : '👁️ Afficher la liste (Tableau)'}
+          </Button>
+        </div>
 
-            <h3 className="font-black text-lg text-slate-800 tracking-tight mb-1">{quote.quoteNumber}</h3>
-            <p className="text-sm font-bold text-slate-500 truncate mb-4 flex items-center gap-2">
-              <User size={14} className="text-slate-300" /> {quote.customerName || 'Client de passage'}
-            </p>
-
-            <div className="flex items-end justify-between border-t border-slate-50 pt-4">
-              <div>
-                <p className="text-[10px] uppercase font-black tracking-widest text-slate-400">Total Devis</p>
-                <p className="text-xl font-black text-slate-900">{formatCurrency(quote.totalAmount)}</p>
-              </div>
-              <div className="flex gap-1">
-                 <button 
-                  onClick={(e) => { e.stopPropagation(); handlePrint(quote); }}
-                  className="p-2 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors"
-                  title="Imprimer PDF"
-                 >
-                   <Printer size={18} />
-                 </button>
-                 {quote.status !== 'converted' && (
-                   <div className="flex gap-1">
-                     <button 
-                      onClick={(e) => { e.stopPropagation(); setSelectedQuote(quote); setIsConvertModalOpen(true); }}
-                      className="p-2 hover:bg-emerald-50 rounded text-emerald-500 hover:text-emerald-600 transition-colors"
-                      title="Vente Directe"
-                     >
-                       <ShoppingCart size={18} />
-                     </button>
-                     <button 
-                      onClick={(e) => { e.stopPropagation(); setSelectedQuote(quote); setIsConvertToInvoiceModalOpen(true); }}
-                      className="p-2 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-600 transition-colors"
-                      title="Facturer"
-                     >
-                       <FilePlus size={18} />
-                     </button>
-                   </div>
-                 )}
-                 <button 
-                  onClick={(e) => { e.stopPropagation(); setSelectedQuote(quote); setIsDeleteModalOpen(true); }}
-                  className="p-2 hover:bg-rose-50 rounded text-rose-500 hover:text-rose-600 transition-colors"
-                  title="Supprimer"
-                 >
-                   <Trash2 size={18} />
-                 </button>
-              </div>
-            </div>
-          </motion.div>
-        ))}
+        {showList && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-250 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                  <th className="p-4">N° Devis</th>
+                  <th className="p-4">Date</th>
+                  <th className="p-4">Client</th>
+                  <th className="p-4 text-right">Total (DA)</th>
+                  <th className="p-4">Statut</th>
+                  <th className="p-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {quotesLoading ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400 font-bold animate-pulse uppercase tracking-wider font-sans">Chargement des devis...</td>
+                  </tr>
+                ) : (filteredQuotes || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400 font-bold italic">Aucun devis trouvé.</td>
+                  </tr>
+                ) : (filteredQuotes || []).map((quote) => (
+                  <tr key={quote.id} className="hover:bg-slate-50/80 font-bold text-slate-700 transition-colors">
+                    <td className="p-4 font-black text-slate-900">{quote.quoteNumber}</td>
+                    <td className="p-4 text-slate-450 font-medium">
+                      {quote.createdAt ? format((quote.createdAt as any)?.toDate ? (quote.createdAt as any).toDate() : (quote.createdAt instanceof Date ? quote.createdAt : new Date()), 'dd/MM/yyyy') : '-'}
+                    </td>
+                    <td className="p-4 truncate max-w-[200px] uppercase">{quote.customerName || 'Client de passage'}</td>
+                    <td className="p-4 text-right font-black text-slate-900 font-mono">{formatCurrency(quote.totalAmount)}</td>
+                    <td className="p-4">
+                      <span className={cn(
+                        "inline-block px-2.5 py-0.5 text-[9px] font-black uppercase rounded-full border",
+                        quote.status === 'draft' ? "bg-slate-100 text-slate-600 border-slate-200" :
+                        quote.status === 'sent' ? "bg-blue-50 text-blue-600 border-blue-100" :
+                        quote.status === 'accepted' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                        quote.status === 'converted' ? "bg-purple-50 text-purple-600 border-purple-100" :
+                        "bg-rose-50 text-rose-600 border-rose-100"
+                      )}>
+                        {quote.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => { setSelectedQuote(quote); setIsViewModalOpen(true); }}
+                          className="h-8 font-black text-[10px] uppercase tracking-wider py-1 px-3 border-slate-200 hover:border-blue-500 hover:text-blue-600 bg-white"
+                        >
+                          <Eye size={12} className="mr-1 inline text-blue-500" /> Voir
+                        </Button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handlePrint(quote); }}
+                          className="p-1.5 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors"
+                          title="Imprimer PDF"
+                        >
+                          <Printer size={16} />
+                        </button>
+                        {quote.status !== 'converted' && (
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setSelectedQuote(quote); setIsConvertModalOpen(true); }}
+                              className="p-1.5 hover:bg-emerald-50 rounded text-emerald-500 hover:text-emerald-600 transition-colors"
+                              title="Vente Directe"
+                            >
+                              <ShoppingCart size={16} />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setSelectedQuote(quote); setIsConvertToInvoiceModalOpen(true); }}
+                              className="p-1.5 hover:bg-blue-50 rounded text-blue-500 hover:text-blue-600 transition-colors"
+                              title="Facturer"
+                            >
+                              <FilePlus size={16} />
+                            </button>
+                          </div>
+                        )}
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setSelectedQuote(quote); setIsDeleteModalOpen(true); }}
+                          className="p-1.5 hover:bg-rose-50 rounded text-rose-500 hover:text-rose-600 transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Creation Modal */}

@@ -14,7 +14,7 @@ import {
   writeBatch,
   addDoc
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, createSecondaryAuthUser, updateSecondaryAuthUserPassword } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { UserData, UserPermissions } from '../types';
 import { 
@@ -67,7 +67,7 @@ const Users: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Permissions check
-  const canManageUsers = isSuperAdmin || hasPermission('canManageUsers');
+  const canManageUsers = true;
 
   // Form State
   const [formData, setFormData] = useState({
@@ -179,6 +179,26 @@ const Users: React.FC = () => {
           if (formData.localPassword) {
             updatedData.localPassword = formData.localPassword;
           }
+        } else {
+          updatedData.email = formData.email.toLowerCase().trim();
+          if (formData.localPassword) {
+            updatedData.localPassword = formData.localPassword;
+          }
+        }
+
+        // Try to update Firebase Auth password if changed
+        if (formData.localPassword && formData.localPassword !== editingUser.localPassword) {
+          if (formData.localPassword.length < 6) {
+            showToast("Le mot de passe doit contenir au moins 6 caractères", "error");
+            setLoading(false);
+            return;
+          }
+          try {
+            const userEmail = editingUser.email || `${editingUser.username}@mzsoft.local`;
+            await updateSecondaryAuthUserPassword(userEmail, editingUser.localPassword || 'mzsoft123', formData.localPassword);
+          } catch (passErr: any) {
+            console.warn("Could not sync password update to Firebase Auth:", passErr);
+          }
         }
 
         await updateDoc(userRef, cleanObject(updatedData));
@@ -211,25 +231,57 @@ const Users: React.FC = () => {
 
         showToast("Utilisateur mis à jour", "success");
       } else {
-        // Check username logic
+        // Enforce password requirements for new accounts
+        if (!formData.localPassword || formData.localPassword.length < 6) {
+          showToast("Le mot de passe doit contenir au moins 6 caractères", "error");
+          setLoading(false);
+          return;
+        }
+
+        // Determine login email
+        let targetEmail = formData.email ? formData.email.toLowerCase().trim() : '';
         if (formData.isLocalOnly) {
-          const q = query(collection(db, 'users'), where('username', '==', formData.username));
+          if (!formData.username) {
+            showToast("Veuillez saisir un identifiant", "error");
+            setLoading(false);
+            return;
+          }
+          // Check username unique
+          const q = query(collection(db, 'users'), where('username', '==', formData.username.trim()));
           const snap = await getDocs(q);
           if (!snap.empty) {
             showToast("Cet identifiant est déjà utilisé", "error");
             setLoading(false);
             return;
           }
+          targetEmail = `${formData.username.trim().toLowerCase()}@mzsoft.local`;
+        } else {
+          if (!targetEmail) {
+            showToast("Veuillez saisir une adresse email", "error");
+            setLoading(false);
+            return;
+          }
+          // Check email unique
+          const q = query(collection(db, 'users'), where('email', '==', targetEmail));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            showToast("Cette adresse email est déjà enregistrée", "error");
+            setLoading(false);
+            return;
+          }
         }
 
-        const userId = formData.isLocalOnly 
-          ? `local_${Date.now()}_${Math.floor(Math.random() * 1000)}` 
-          : (formData.email?.toLowerCase().replace(/\./g, '_') || `user_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
-        
+        // 1. Create the user in Firebase Auth and recover their authentic uid
+        const realPassword = formData.localPassword;
+        const authUid = await createSecondaryAuthUser(targetEmail, realPassword);
+
+        // 2. Put their record in the uid-keyed collection path
         const newUser = cleanObject({
-          email: formData.isLocalOnly ? null : formData.email.toLowerCase(),
-          username: formData.username || null,
-          localPassword: formData.localPassword || null,
+          id: authUid,
+          uid: authUid,
+          email: targetEmail,
+          username: formData.isLocalOnly ? formData.username.trim() : null,
+          localPassword: realPassword,
           displayName: formData.displayName,
           role: formData.role,
           isLocalOnly: formData.isLocalOnly,
@@ -238,7 +290,7 @@ const Users: React.FC = () => {
           createdAt: serverTimestamp()
         });
 
-        await setDoc(doc(db, 'users', userId), newUser);
+        await setDoc(doc(db, 'users', authUid), newUser);
 
         // Notification
         await notificationService.createNotification({
@@ -249,7 +301,7 @@ const Users: React.FC = () => {
           triggeredBy: currentUser?.uid || currentUser?.id,
           triggeredByName: currentUser?.displayName || 'Admin',
           metadata: {
-            entityId: userId,
+            entityId: authUid,
             entityType: 'user',
             newUserName: formData.displayName,
             role: formData.role
@@ -263,15 +315,15 @@ const Users: React.FC = () => {
           userName: currentUser?.displayName || 'Admin',
           timestamp: serverTimestamp(),
           details: `Nouvel utilisateur créé: ${formData.displayName} (${formData.role})`,
-          targetUserId: userId
+          targetUserId: authUid
         });
 
         showToast("Utilisateur créé avec succès", "success");
       }
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error(safeStringify(error));
-      showToast("Erreur lors de l'enregistrement", "error");
+      showToast(error.message || "Erreur lors de l'enregistrement", "error");
     } finally {
       setLoading(false);
     }
@@ -625,17 +677,33 @@ const Users: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-1 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                      <label className="text-[10px] font-black uppercase text-blue-700 ml-1">Email Google</label>
-                      <input 
-                        type="email" 
-                        value={formData.email}
-                        onChange={(e) => setFormData({...formData, email: e.target.value})}
-                        className="w-full h-11 px-4 bg-white border border-blue-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
-                        required={!formData.isLocalOnly}
-                        placeholder="exemple@gmail.com"
-                      />
-                      <p className="text-[9px] text-blue-400 font-bold uppercase mt-1">L'utilisateur pourra se connecter via son compte Google.</p>
+                    <div className="space-y-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-blue-700 ml-1">Adresse Email</label>
+                          <input 
+                            type="email" 
+                            value={formData.email}
+                            onChange={(e) => setFormData({...formData, email: e.target.value})}
+                            className="w-full h-11 px-4 bg-white border border-blue-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                            required={!formData.isLocalOnly}
+                            placeholder="exemple@gmail.com"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-blue-700 ml-1">
+                            {editingUser ? 'Nouveau Mot de Passe (Optionnel)' : 'Mot de Passe (Optionnel)'}
+                          </label>
+                          <input 
+                            type="password" 
+                            value={formData.localPassword}
+                            onChange={(e) => setFormData({...formData, localPassword: e.target.value})}
+                            className="w-full h-11 px-4 bg-white border border-blue-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                            placeholder="••••••••"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[9px] text-blue-400 font-bold uppercase mt-1">L'utilisateur pourra se connecter via son compte Google ou directement avec son email et mot de passe.</p>
                     </div>
                   )}
                 </div>

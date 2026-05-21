@@ -37,6 +37,14 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Button } from '../components/ui/Button';
 
+const getMillis = (val: any): number => {
+  if (!val) return 0;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val.seconds === 'number') return val.seconds * 1000;
+  const parsed = new Date(val);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, userData, isAdmin, hasPermission } = useAuth();
@@ -57,28 +65,33 @@ const Dashboard: React.FC = () => {
       const q = query(
         collection(db, 'notifications'),
         where('isRead', '==', false),
-        orderBy('createdAt', 'desc'),
-        limit(20)
+        limit(100)
       );
       const unsub = onSnapshot(q, (snap) => {
-        setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification)));
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification));
+        docs.sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
+        setNotifications(docs.slice(0, 20));
       });
       return unsub;
     }
   }, [isAdmin]);
 
   React.useEffect(() => {
-    const currentUid = user?.uid || userData?.id;
-    if (!currentUid) return;
+    if (!user) return;
+    const currentUid = user.uid;
 
     // Sales query - only show user's sales if not admin or doesn't have report permission
     const salesBaseQuery = collection(db, 'sales');
     const salesQ = (isAdmin || canViewFinancials)
       ? query(salesBaseQuery, orderBy('createdAt', 'desc'), limit(500))
-      : query(salesBaseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'), limit(500));
+      : query(salesBaseQuery, where('userId', '==', currentUid), limit(500));
 
     const salesUnsub = onSnapshot(salesQ, (snap) => {
-      setSales(snap.docs.map(d => ({ id: d.id, ...d.data() } as Sale)));
+      let docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Sale));
+      if (!isAdmin && !canViewFinancials) {
+        docs.sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
+      }
+      setSales(docs);
       setLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
@@ -97,7 +110,7 @@ const Dashboard: React.FC = () => {
       productsUnsub();
       customersUnsub();
     };
-  }, [user, userData, isAdmin, canViewFinancials]);
+  }, [user, isAdmin, canViewFinancials]);
 
   const statsData = useMemo(() => {
     const totalRevenue = sales.reduce((acc, sale) => acc + (sale.totalAmount || 0), 0);

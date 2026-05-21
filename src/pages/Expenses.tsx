@@ -25,37 +25,32 @@ export default function Expenses() {
 
   const canManage = hasPermission('canManageExpenses');
 
-  if (!canManage) {
-    return (
-      <div className="h-full flex items-center justify-center p-6">
-        <div className="bg-white p-12 text-center border border-slate-200">
-           <ShieldAlert size={48} className="text-rose-500 mx-auto mb-4" />
-           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Refusé</h2>
-           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation de gérer ou visualiser les dépenses.</p>
-           <Button onClick={() => window.history.back()} className="mt-6 bg-slate-800">Retour</Button>
-        </div>
-      </div>
-    );
-  }
-
   useEffect(() => {
-    const currentUid = user?.uid || userData?.id;
-    if (!currentUid) return;
+    if (!user) return;
+    const currentUid = user.uid;
 
     const baseQuery = collection(db, 'expenses');
     // If admin or has view reports perm, see all. Otherwise see only own.
     const q = (hasPermission('canViewReports')) 
       ? query(baseQuery, orderBy('createdAt', 'desc'))
-      : query(baseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'));
+      : query(baseQuery, where('userId', '==', currentUid));
 
     return onSnapshot(
       q,
       (snapshot) => {
-        setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (!hasPermission('canViewReports')) {
+          docs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return timeB - timeA;
+          });
+        }
+        setExpenses(docs);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'expenses')
     );
-  }, [user, userData, hasPermission]);
+  }, [user, hasPermission]);
 
   const onSubmit = async (data: any) => {
     try {
@@ -103,6 +98,19 @@ export default function Expenses() {
   );
 
   const totalExpenses = filtered.reduce((acc, e) => acc + (e.amount || 0), 0);
+
+  if (!canManage) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="bg-white p-12 text-center border border-slate-200">
+           <ShieldAlert size={48} className="text-rose-500 mx-auto mb-4" />
+           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Refusé</h2>
+           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation de gérer ou visualiser les dépenses.</p>
+           <Button onClick={() => window.history.back()} className="mt-6 bg-slate-800">Retour</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

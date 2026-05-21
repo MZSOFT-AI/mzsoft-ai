@@ -196,6 +196,16 @@ export interface Sale extends BaseEntity {
   userName?: string;
   status?: 'completed' | 'partially_returned' | 'returned';
   customCompanyInfo?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+}
+
+export interface ProjectEquipment {
+  id?: string;
+  name: string;
+  quantity: number;
+  isManual: boolean;
+  unit?: string;
 }
 
 export interface Project extends BaseEntity {
@@ -203,6 +213,8 @@ export interface Project extends BaseEntity {
   location?: string;
   clientId?: string;
   clientName?: string;
+  clientType?: 'database' | 'manual';
+  clientNameManual?: string;
   status: 'planning' | 'active' | 'suspended' | 'completed' | 'cancelled';
   startDate?: Timestamp | Date;
   endDate?: Timestamp | Date;
@@ -210,15 +222,21 @@ export interface Project extends BaseEntity {
   description?: string;
   managerId?: string;
   managerName?: string;
+  assignedTo?: string;
+  equipments?: ProjectEquipment[];
+  referenceType?: 'none' | 'sale' | 'quote' | 'invoice' | 'manual';
+  referenceId?: string;
+  referenceNumber?: string;
 }
 
 export interface Employee extends BaseEntity {
   name: string;
   role: string;
   phone?: string;
-  salaryBasis: 'daily' | 'monthly' | 'fixed';
+  salaryBasis: 'daily' | 'monthly' | 'fixed' | 'project';
   rate: number;
   isActive: boolean;
+  projectRates?: Array<{ projectId: string; projectName: string; rate: number }>;
 }
 
 export interface ProjectPayment extends BaseEntity {

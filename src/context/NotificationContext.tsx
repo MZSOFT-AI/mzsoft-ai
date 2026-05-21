@@ -76,13 +76,19 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       q = query(
         collection(db, 'notifications'),
         where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc'),
         limit(50)
       );
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification));
+      if (!isAdmin && !isSuperAdmin) {
+        docs.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+          return timeB - timeA;
+        });
+      }
       setNotifications(docs);
       setUnreadCount(docs.filter(n => n.status === 'unread' || !n.isRead).length);
     });

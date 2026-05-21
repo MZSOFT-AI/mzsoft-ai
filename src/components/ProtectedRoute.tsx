@@ -22,7 +22,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
   }
 
   // GLOBAL SECURITY ENFORCEMENT: All authenticated users can enter, permissions are handled per route/action
-  if (!user && !userData) {
+  if (!user || !userData) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

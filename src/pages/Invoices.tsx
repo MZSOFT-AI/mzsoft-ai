@@ -39,7 +39,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { notificationService } from '../services/notificationService';
 
 const Invoices: React.FC = () => {
-  const { user, userData } = useAuth();
+  const { user, userData, isAdmin, isSuperAdmin } = useAuth();
   const { showToast } = useNotification();
   const { settings } = useSettings();
   const { activeSession } = useSession();
@@ -49,6 +49,7 @@ const Invoices: React.FC = () => {
   const { data: customers } = useCollection<Customer>('customers', [orderBy('name')]);
   const { data: projects } = useCollection<Project>('projects', [orderBy('name')]);
 
+  const [showList, setShowList] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -515,6 +516,18 @@ const Invoices: React.FC = () => {
     }
   };
 
+  if (!isAdmin) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto bg-white min-h-screen flex items-center justify-center">
+        <div className="p-8 text-center max-w-xl mx-auto border border-rose-200 bg-rose-50 text-red-600 rounded-3xl shadow-lg">
+          <Ban className="mx-auto text-rose-500 mb-3 animate-bounce" size={48} />
+          <h2 className="text-2xl font-black uppercase tracking-tight mb-2">Accès Refusé</h2>
+          <p className="font-bold text-slate-600">Seuls les rôles d'Administrateur ou de Super-Administrateur peuvent accéder à la page de facturation.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto bg-white min-h-screen">
       {/* Header */}
@@ -533,70 +546,112 @@ const Invoices: React.FC = () => {
         </Button>
       </div>
 
-      {/* Filters */}
-      <div className="mb-6">
-        <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Rechercher par numéro ou client..."
-            className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {invoicesLoading ? (
-          Array(6).fill(0).map((_, i) => <div key={i} className="h-40 bg-slate-50 animate-pulse rounded-2xl" />)
-        ) : (filteredInvoices || []).length === 0 ? (
-          <div className="col-span-full py-20 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl">
-             <FilePlus size={48} className="mx-auto text-slate-300 mb-3" />
-             <p className="text-slate-500 font-bold">Aucune facture enregistrée.</p>
+      {/* Filters (only show search query input if superadmin can list the previous invoices) */}
+      {isSuperAdmin && (
+        <div className="mb-6">
+          <div className="relative group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Rechercher par numéro ou client..."
+              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold text-slate-800"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-        ) : (filteredInvoices || []).map((invoice) => (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            key={invoice.id}
-            onClick={() => { setSelectedInvoice(invoice); setIsViewModalOpen(true); }}
-            className="bg-white border border-slate-200 p-6 rounded-2xl hover:border-blue-500 hover:shadow-xl transition-all cursor-pointer group"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <span className={cn(
-                "px-3 py-1 text-[10px] font-black uppercase rounded-full",
-                invoice.status === 'paid' ? "bg-emerald-50 text-emerald-600" : 
-                invoice.status === 'draft' ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600"
-              )}>
-                {invoice.status === 'draft' ? 'Brouillon' : invoice.status === 'paid' ? 'Payée' : invoice.status}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400">
-                {invoice.createdAt ? format(new Date((invoice.createdAt as any).toDate()), 'dd/MM/yyyy') : '-'}
-              </span>
+        </div>
+      )}
+
+      {/* Hidden Table for Invoices */}
+      {isSuperAdmin ? (
+        <div className="mt-4 border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-sm mb-12">
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-slate-700 uppercase tracking-wider">📜 Historique des Factures Précédentes</span>
+              <span className="bg-emerald-100 text-emerald-800 text-[9px] uppercase font-black px-2 py-0.5 rounded">Superadmin</span>
             </div>
-            
-            <h3 className="font-black text-lg text-slate-800">{invoice.invoiceNumber}</h3>
-            <p className="text-sm text-slate-500 font-bold mb-4">{invoice.customerName || 'Client anonyme'}</p>
-            
-            <div className="flex items-end justify-between border-t border-slate-50 pt-4">
-              <div>
-                <p className="text-[10px] uppercase font-black text-slate-400">Total</p>
-                <p className="text-xl font-black text-blue-600 tracking-tighter">{formatCurrency(invoice.totalAmount)}</p>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handlePrint(invoice); }}
-                  className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-blue-600 transition-colors"
-                >
-                  <Printer size={18} />
-                </button>
-              </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowList(!showList)} 
+              className="text-xs uppercase font-extrabold tracking-wider border-slate-350 bg-white hover:bg-slate-100 px-4 py-2 h-9"
+            >
+              {showList ? '🙈 Masquer la liste (Cacher)' : '👁️ Afficher la liste (Tableau)'}
+            </Button>
+          </div>
+
+          {showList && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-250 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                    <th className="p-4">N° Facture</th>
+                    <th className="p-4">Date</th>
+                    <th className="p-4">Client</th>
+                    <th className="p-4 text-right">Total (DA)</th>
+                    <th className="p-4">Statut</th>
+                    <th className="p-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {invoicesLoading ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-400 font-bold animate-pulse uppercase tracking-wider">Chargement des factures...</td>
+                    </tr>
+                  ) : (filteredInvoices || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-400 font-bold italic">Aucune facture enregistrée ou trouvée.</td>
+                    </tr>
+                  ) : (filteredInvoices || []).map((invoice) => (
+                    <tr key={invoice.id} className="hover:bg-slate-50/80 font-bold text-slate-700 transition-colors">
+                      <td className="p-4 font-black text-slate-900">{invoice.invoiceNumber}</td>
+                      <td className="p-4 text-slate-450 font-medium">
+                        {invoice.createdAt ? format(new Date((invoice.createdAt as any).toDate ? (invoice.createdAt as any).toDate() : (invoice.createdAt instanceof Date ? invoice.createdAt : new Date())), 'dd/MM/yyyy') : '-'}
+                      </td>
+                      <td className="p-4 truncate max-w-[200px] uppercase">{invoice.customerName || 'Client anonyme'}</td>
+                      <td className="p-4 text-right font-black text-slate-900 font-mono">{formatCurrency(invoice.totalAmount)}</td>
+                      <td className="p-4">
+                        <span className={cn(
+                          "inline-block px-2.5 py-0.5 text-[9px] font-black uppercase rounded-full border",
+                          invoice.status === 'paid' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
+                          invoice.status === 'draft' ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-blue-50 text-blue-600 border-blue-100"
+                        )}>
+                          {invoice.status === 'draft' ? 'Brouillon' : invoice.status === 'paid' ? 'Payée' : invoice.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => { setSelectedInvoice(invoice); setIsViewModalOpen(true); }}
+                            className="h-8 font-black text-[10px] uppercase tracking-wider py-1 px-3 border-slate-200 hover:border-blue-500 hover:text-blue-600 bg-white"
+                          >
+                            <Eye size={12} className="mr-1 inline text-blue-500" /> Voir
+                          </Button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handlePrint(invoice); }}
+                            className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-blue-600 transition-colors"
+                            title="Imprimer"
+                          >
+                            <Printer size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </motion.div>
-        ))}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl text-center mb-12">
+          <p className="text-slate-500 font-bold uppercase tracking-tight text-xs">
+            🔒 L'historique et la consultation des factures précédentes sont réservés au Super-Administrateur.
+          </p>
+        </div>
+      )}
 
       {/* Creation Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isPreview ? "Aperçu de la Facture" : "Nouvelle Facture"} size={isPreview ? "lg" : "2xl"}>
@@ -1157,7 +1212,7 @@ const Invoices: React.FC = () => {
                  </Button>
                )}
                
-               {userData?.role === 'admin' && (
+               {true && (
                  <Button onClick={() => setIsDeleteModalOpen(true)} className="bg-rose-50 text-rose-500 hover:bg-rose-100 border-none shadow-none h-14 w-14 p-0">
                    <Trash2 size={20} />
                  </Button>

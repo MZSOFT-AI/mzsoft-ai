@@ -50,18 +50,13 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user && !userData) {
+    if (!user) {
       setActiveSession(null);
       setLoading(false);
       return;
     }
 
-    const currentUid = user?.uid || userData?.id;
-    if (!currentUid) {
-      setActiveSession(null);
-      setLoading(false);
-      return;
-    }
+    const currentUid = user.uid;
 
     // Look for open sessions specifically for this user
     const q = query(
@@ -89,7 +84,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     return () => unsubscribe();
-  }, [user, userData]);
+  }, [user]);
 
   const [isStarting, setIsStarting] = useState(false);
 

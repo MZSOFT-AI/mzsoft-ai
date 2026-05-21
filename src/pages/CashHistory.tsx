@@ -63,10 +63,10 @@ const CashHistory: React.FC = () => {
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     setLoading(true);
     
-    const currentUid = user?.uid || userData?.id;
-    if (!currentUid) return;
+    const currentUid = user.uid;
 
     // Filter by user if not admin. If admin, show all for audit/management.
     const salesBaseQuery = collection(db, 'sales');
@@ -75,21 +75,29 @@ const CashHistory: React.FC = () => {
 
     const salesQ = isAdmin 
       ? query(salesBaseQuery, orderBy('createdAt', 'desc'))
-      : query(salesBaseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'));
+      : query(salesBaseQuery, where('userId', '==', currentUid));
 
     const expensesQ = isAdmin
       ? query(expensesBaseQuery, orderBy('createdAt', 'desc'))
-      : query(expensesBaseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'));
+      : query(expensesBaseQuery, where('userId', '==', currentUid));
 
     const closingsQ = isAdmin
       ? query(closingsBaseQuery, orderBy('date', 'desc'))
-      : query(closingsBaseQuery, where('userId', '==', currentUid), orderBy('date', 'desc'));
+      : query(closingsBaseQuery, where('userId', '==', currentUid));
 
     // Subscribe to sales
     const salesUnsub = onSnapshot(
       salesQ,
       (snapshot) => {
-        setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (!isAdmin) {
+          docs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return timeB - timeA;
+          });
+        }
+        setSales(docs);
         setLoading(false);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'sales')
@@ -99,7 +107,15 @@ const CashHistory: React.FC = () => {
     const expensesUnsub = onSnapshot(
       expensesQ,
       (snapshot) => {
-        setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (!isAdmin) {
+          docs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return timeB - timeA;
+          });
+        }
+        setExpenses(docs);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'expenses')
     );
@@ -108,7 +124,15 @@ const CashHistory: React.FC = () => {
     const closingsUnsub = onSnapshot(
       closingsQ,
       (snapshot) => {
-        setClosings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (!isAdmin) {
+          docs.sort((a: any, b: any) => {
+            const timeA = a.date?.toMillis ? a.date.toMillis() : (a.date ? new Date(a.date).getTime() : 0);
+            const timeB = b.date?.toMillis ? b.date.toMillis() : (b.date ? new Date(b.date).getTime() : 0);
+            return timeB - timeA;
+          });
+        }
+        setClosings(docs);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'daily_closings')
     );
@@ -118,7 +142,7 @@ const CashHistory: React.FC = () => {
       expensesUnsub();
       closingsUnsub();
     };
-  }, [user, userData, isAdmin]);
+  }, [user, isAdmin]);
 
   const startingCashValue = useMemo(() => {
     // Find the most recent closing before today

@@ -59,7 +59,7 @@ const Sidebar: React.FC = () => {
       case 'cash-history': return isAdmin;
       case 'users': return isAdmin; // Fixed: using isAdmin instead of isSuperAdmin based on user request
       case 'quotes': return true;
-      case 'invoices': return hasPermission('canSell');
+      case 'invoices': return isAdmin;
       case 'projects': return true;
       case 'employees': return isAdmin;
       case 'reports': return hasPermission('canViewReports');

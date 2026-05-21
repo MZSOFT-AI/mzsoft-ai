@@ -7,7 +7,7 @@ service cloud.firestore {
     function isSignedIn() { return request.auth != null; }
     function isSuperAdmin() {
       return isSignedIn() && (
-        ('email' in request.auth.token && request.auth.token.email.lower() == 'djelloulmohamed1990@gmail.com') ||
+        ('email' in request.auth.token && request.auth.token.email == 'djelloulmohamed1990@gmail.com') ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
       );
     }
@@ -55,8 +55,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 128) || data.email == null)
         && data.role in ['superadmin', 'admin', 'vendeur', 'manager']
         && (!data.keys().hasAny(['status']) || data.status in ['active', 'inactive'])
-        && (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp)
-        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is timestamp)
+        && (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp || data.createdAt is string || data.createdAt is map)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is timestamp || data.updatedAt is string || data.updatedAt is map)
         && (!data.keys().hasAny(['photoURL']) || (data.photoURL is string || data.photoURL == null))
         && (!data.keys().hasAny(['isLocalOnly']) || data.isLocalOnly is bool)
         && (!data.keys().hasAny(['username']) || (data.username is string && data.username.size() <= 64))
@@ -68,16 +68,16 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow list: if (request.query.limit <= 1) || isAdmin();
-      allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || (resource != null && resource.data.username != null);
+      allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || (resource == null) || (resource != null && (resource.data.username != null || resource.data.email != null));
       
       allow create: if (
         isAdmin() ||
         (!isSignedIn() && incoming().role == 'superadmin') ||
-        (request.auth.token.provider_id == 'anonymous' && incoming().uid == request.auth.uid)
+        (isSignedIn() && request.auth.uid == userId && incoming().uid == request.auth.uid)
       ) && isValidUser(incoming());
 
       allow update: if (isSignedIn() && request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt', 'localPassword', 'uid', 'lastLogoutAt'])) || canManageUsers();
-      allow delete: if canManageUsers();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -103,7 +103,7 @@ service cloud.firestore {
       allow update: if hasPermission('canManageStock') || (
         hasPermission('canSell') && incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'updatedAt'])
       );
-      allow delete: if hasPermission('canDeleteProducts');
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -125,22 +125,22 @@ service cloud.firestore {
 
     match /sales/{saleId} {
       allow get: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
-      allow list: if isSignedIn() && (isAdmin() || (request.query.limit <= 50 && request.auth.uid != null));
+      allow list: if isSignedIn() && (isAdmin() || (request.query.limit <= 500 && request.auth.uid != null));
       allow create: if hasPermission('canSell') && isValidSale(incoming());
       allow update: if hasPermission('canProcessReturns') || (
         isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'items', 'updatedAt'])
       );
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
     // DAILY CLOSINGS
     // ---------------------------------------------------------
     match /daily_closings/{closingId} {
-      allow list, get: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid) || (resource == null && request.auth.uid != null));
+      allow list, get: if isSignedIn() && (isAdmin() || resource == null || resource.data.userId == request.auth.uid);
       allow create: if isSignedIn(); // Session opening often starts as a creation by current user
-      allow update: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow update: if isSignedIn() && (isAdmin() || resource == null || resource.data.userId == request.auth.uid);
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -162,9 +162,9 @@ service cloud.firestore {
     }
 
     match /pending_sales/{saleId} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow read: if isSignedIn() && (isAdmin() || resource == null || resource.data.userId == request.auth.uid);
       allow create, update: if isSignedIn() && isValidPendingSale(incoming());
-      allow delete: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -184,7 +184,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || hasPermission('canSell')) && isValidCustomer(incoming());
       allow update: if isSignedIn() && (isAdmin() || hasPermission('canSell')) && isValidCustomer(incoming());
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -193,7 +193,7 @@ service cloud.firestore {
     match /suppliers/{supplierId} {
       allow read: if isSignedIn();
       allow create, update: if hasPermission('canManageStock') || isAdmin();
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -201,7 +201,8 @@ service cloud.firestore {
     // ---------------------------------------------------------
     match /categories/{categoryId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if hasPermission('canManageStock') || isAdmin();
+      allow create, update: if hasPermission('canManageStock') || isAdmin();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -210,7 +211,8 @@ service cloud.firestore {
     match /expenses/{expenseId} {
       allow list, get: if isAdmin() || hasPermission('canManageExpenses');
       allow create: if hasPermission('canManageExpenses') || isAdmin();
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -219,7 +221,8 @@ service cloud.firestore {
     match /stock_movements/{movementId} {
       allow read: if isSignedIn() && (isAdmin() || hasPermission('canManageStock'));
       allow create: if hasPermission('canSell') || hasPermission('canManageStock') || isAdmin();
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -270,10 +273,10 @@ service cloud.firestore {
     }
 
     match /invoices/{invoiceId} {
-      allow read, get: if isAdmin();
-      allow create: if isAdmin() && isValidInvoice(incoming());
-      allow update: if isAdmin() && isValidInvoice(incoming());
-      allow delete: if isAdmin();
+      allow read, get: if isSignedIn();
+      allow create: if (isAdmin() || hasPermission('canSell')) && isValidInvoice(incoming());
+      allow update: if (isAdmin() || hasPermission('canSell')) && isValidInvoice(incoming());
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -293,7 +296,7 @@ service cloud.firestore {
     match /inventory_audits/{auditId} {
       allow read: if isAdmin();
       allow create, update: if isAdmin() && isValidInventoryAudit(incoming());
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -320,10 +323,10 @@ service cloud.firestore {
     }
 
     match /quotes/{quoteId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && isValidQuote(incoming());
-      allow update: if isAdmin() && isValidQuote(incoming());
-      allow delete: if isAdmin();
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidQuote(incoming());
+      allow update: if isSignedIn() && isValidQuote(incoming());
+      allow delete: if isSignedIn();
     }
 
     // ---------------------------------------------------------
@@ -339,16 +342,19 @@ service cloud.firestore {
     // ---------------------------------------------------------
     function isValidNotification(data) {
       return data.keys().hasAll(['type', 'title', 'message', 'isRead', 'priority', 'createdAt'])
-      && data.type in ['low_stock', 'stock_discrepancy', 'cash_discrepancy', 'system', 'deletion', 'alert', 'info', 'success', 'warning']
-      && data.title is string && data.title.size() <= 200
+        && data.type in ['low_stock', 'stock_discrepancy', 'cash_discrepancy', 'system', 'deletion', 'alert', 'info', 'success', 'warning', 'sale', 'invoice', 'quote', 'user', 'payment', 'security']
+        && data.title is string && data.title.size() <= 200
         && data.message is string && data.message.size() <= 1000
         && data.isRead is bool
         && data.priority in ['low', 'medium', 'high', 'critical']
         && (!data.keys().hasAny(['status']) || data.status in ['read', 'unread', 'archived'])
-        && (!data.keys().hasAny(['userId']) || data.userId is string)
-        && (!data.keys().hasAny(['userName']) || data.userName is string)
-        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
-        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is timestamp || data.createdAt == request.time));
+        && (!data.keys().hasAny(['userId']) || data.userId is string || data.userId == null)
+        && (!data.keys().hasAny(['userName']) || data.userName is string || data.userName == null)
+        && (!data.keys().hasAny(['triggeredBy']) || data.triggeredBy is string || data.triggeredBy == null)
+        && (!data.keys().hasAny(['triggeredByName']) || data.triggeredByName is string || data.triggeredByName == null)
+        && (!data.keys().hasAny(['metadata']) || data.metadata is map || data.metadata == null)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time || data.updatedAt is timestamp)
+        && (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp || data.createdAt == request.time);
     }
 
     match /notifications/{notificationId} {
@@ -357,22 +363,25 @@ service cloud.firestore {
       allow update: if (isAdmin() || (isSignedIn() && (existing().userId == request.auth.uid || !('userId' in existing())))) 
         && isValidNotification(incoming()) 
         && incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'status', 'updatedAt']);
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     match /projects/{projectId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin() || isSuperAdmin();
+      allow create, update: if isAdmin() || isSuperAdmin();
+      allow delete: if isSignedIn();
     }
 
     match /employees/{employeeId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin() || isSuperAdmin();
+      allow create, update: if isAdmin() || isSuperAdmin();
+      allow delete: if isSignedIn();
     }
 
     match /employeePayments/{paymentId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin() || isSuperAdmin();
+      allow create, update: if isAdmin() || isSuperAdmin();
+      allow delete: if isSignedIn();
     }
 
   }

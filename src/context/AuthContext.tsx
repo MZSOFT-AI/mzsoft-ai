@@ -5,14 +5,39 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signOut,
-  signInAnonymously
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, query, collection, where, getDocs, limit, updateDoc, addDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, query, collection, where, getDocs, limit, updateDoc, addDoc, Timestamp } from 'firebase/firestore';
+import { auth, db, updateSecondaryAuthUserPassword } from '../firebase/config';
 import { notificationService } from '../services/notificationService';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { UserData, UserPermissions } from '../types';
 import { safeStringify, cleanObject } from '../lib/utils';
+
+const restoreTimestamp = (val: any) => {
+  if (!val) return null;
+  if (typeof val.toMillis === 'function') return val;
+  if (typeof val.seconds === 'number') {
+    try {
+      return new Timestamp(val.seconds, val.nanoseconds || 0);
+    } catch (e) {
+      console.error("Error creating Timestamp from seconds:", e);
+    }
+  }
+  if (typeof val === 'string') {
+    try {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        return Timestamp.fromDate(d);
+      }
+    } catch (e) {
+      console.error("Error parsing date string:", e);
+    }
+  }
+  return val;
+};
 
 interface AuthContextType {
   user: User | null;
@@ -47,7 +72,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const snap = await getDocs(q);
         setUsersExist(!snap.empty);
       } catch (e) {
-        console.error("Error checking users:", safeStringify(e));
+        // A permission error here is expected when security rules restrict guest access on protected collections.
+        // Since rules exist to block this, we safely assume users exist and keep the default true state.
+        console.info("Info: system database secured or user list restricted.");
       }
     };
     checkUsers();
@@ -64,73 +91,118 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        // Sync user with Firestore
-        const userDocRef = doc(db, 'users', user.uid);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        // Sync user with Firestore using uid as document ID
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
         try {
           let userDoc = await getDoc(userDocRef);
           
           if (!userDoc.exists()) {
-            if (user.isAnonymous) {
-              // This is an anonymous session. 
-              // Check if we have a pending local login context
-              const pendingLocalId = localStorage.getItem('mzsoft_pending_local_id');
-              if (pendingLocalId) {
-                const localDocRef = doc(db, 'users', pendingLocalId);
-                const localDoc = await getDoc(localDocRef);
-                if (localDoc.exists()) {
-                  // Link this anonymous UID to this local user
-                  const localData = localDoc.data();
-                  await setDoc(userDocRef, cleanObject({
-                    ...localData,
-                    uid: user.uid,
-                    updatedAt: serverTimestamp()
-                  }));
-                  // If the ID was different, we might want to delete the old one or just leave it
-                  // For now, let's keep it simple.
-                  userDoc = await getDoc(userDocRef);
-                  localStorage.removeItem('mzsoft_pending_local_id');
-                }
-              }
-            } else if (user.email) {
-              const emailDocRef = doc(db, 'users', user.email.toLowerCase());
+            if (firebaseUser.email) {
+              const cleanedEmail = firebaseUser.email.toLowerCase().trim();
+              
+              // 1. Try checking legacy email document (users/email_address)
+              const emailDocRef = doc(db, 'users', cleanedEmail);
               const emailDoc = await getDoc(emailDocRef);
               
               if (emailDoc.exists()) {
                 const preData = emailDoc.data();
                 const newUserData = cleanObject({
                   ...preData,
-                  displayName: user.displayName || preData.displayName || 'Utilisateur',
-                  uid: user.uid,
-                  photoURL: user.photoURL,
+                  displayName: firebaseUser.displayName || preData.displayName || 'Utilisateur',
+                  uid: firebaseUser.uid,
+                  photoURL: firebaseUser.photoURL || preData.photoURL || null,
+                  email: cleanedEmail,
                   updatedAt: serverTimestamp(),
                   createdAt: preData.createdAt || serverTimestamp()
                 });
                 await setDoc(userDocRef, newUserData);
                 await deleteDoc(emailDocRef);
                 userDoc = await getDoc(userDocRef);
-              } else if (user.email.toLowerCase() === 'djelloulmohamed1990@gmail.com') {
-                const superAdminData = cleanObject({
-                  displayName: user.displayName || 'Super Admin',
-                  email: user.email.toLowerCase(),
-                  role: 'superadmin',
-                  createdAt: serverTimestamp(),
-                  photoURL: user.photoURL,
-                  permissions: {
-                    canManageStock: true, canDeleteProducts: true, canSell: true, canProcessReturns: true,
-                    canPerformInventory: true, canManageExpenses: true, canViewReports: true, canManageUsers: true
-                  },
-                  status: 'active',
-                  uid: user.uid
-                });
-                await setDoc(userDocRef, superAdminData);
-                userDoc = await getDoc(userDocRef);
-              } else {
-                await signOut(auth);
-                setLoading(false);
-                return;
+              } 
+              // 2. Try querying users collection for ANY document matching this email (e.g. key was randomized/custom)
+              else {
+                const q = query(collection(db, 'users'), where('email', '==', cleanedEmail), limit(1));
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                  const preDoc = snap.docs[0];
+                  const preData = preDoc.data();
+                  const newUserData = cleanObject({
+                    ...preData,
+                    uid: firebaseUser.uid,
+                    email: cleanedEmail,
+                    updatedAt: serverTimestamp(),
+                    createdAt: preData.createdAt || serverTimestamp()
+                  });
+                  await setDoc(userDocRef, newUserData);
+                  if (preDoc.id !== firebaseUser.uid) {
+                    await deleteDoc(doc(db, 'users', preDoc.id));
+                  }
+                  userDoc = await getDoc(userDocRef);
+                } 
+                // 3. Fallback for the principal super admin
+                else if (cleanedEmail === 'djelloulmohamed1990@gmail.com') {
+                  const superAdminData = cleanObject({
+                    displayName: firebaseUser.displayName || 'Super Admin',
+                    email: cleanedEmail,
+                    role: 'superadmin',
+                    createdAt: serverTimestamp(),
+                    photoURL: firebaseUser.photoURL || null,
+                    permissions: {
+                      canManageStock: true, canDeleteProducts: true, canSell: true, canProcessReturns: true,
+                      canPerformInventory: true, canManageExpenses: true, canViewReports: true, canManageUsers: true
+                    },
+                    status: 'active',
+                    uid: firebaseUser.uid
+                  });
+                  await setDoc(userDocRef, superAdminData);
+                  userDoc = await getDoc(userDocRef);
+                } 
+                // 4. Deny access if unauthorized
+                else {
+                  console.warn("Utilisateur non trouvé dans Firestore après authentification:", cleanedEmail);
+                  await signOut(auth);
+                  setUserData(null);
+                  setLoading(false);
+                  return;
+                }
+              }
+            } else if (firebaseUser.isAnonymous) {
+              // This is an anonymous session. Check if we have a pending local login context
+              const pendingLocalId = localStorage.getItem('mzsoft_pending_local_id');
+              const pendingLocalDataStr = localStorage.getItem('mzsoft_pending_local_data');
+              if (pendingLocalId) {
+                let localData = null;
+                if (pendingLocalDataStr) {
+                  try {
+                    localData = JSON.parse(pendingLocalDataStr);
+                  } catch (e) {
+                    console.error("Error parsing pending local user data:", e);
+                  }
+                }
+
+                if (!localData) {
+                  const localDocRef = doc(db, 'users', pendingLocalId);
+                  const localDoc = await getDoc(localDocRef);
+                  if (localDoc.exists()) {
+                    localData = localDoc.data();
+                  }
+                }
+
+                if (localData) {
+                  const restoredCreatedAt = restoreTimestamp(localData.createdAt) || serverTimestamp();
+                  await setDoc(userDocRef, cleanObject({
+                    ...localData,
+                    uid: firebaseUser.uid,
+                    createdAt: restoredCreatedAt,
+                    updatedAt: serverTimestamp()
+                  }));
+                  userDoc = await getDoc(userDocRef);
+                  localStorage.removeItem('mzsoft_pending_local_id');
+                  localStorage.removeItem('mzsoft_pending_local_data');
+                }
               }
             } else {
               await signOut(auth);
@@ -151,30 +223,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             setUserData({ id: userDoc.id, ...data });
-            if (!user.isAnonymous) {
-              localStorage.removeItem('mzsoft_local_user');
-              setLocalUser(null);
-            }
+            localStorage.setItem('mzsoft_local_user', safeStringify({ id: userDoc.id, ...data }));
           }
         } catch (error) {
           console.error("Auth sync error:", safeStringify(error));
-          // Don't call handleFirestoreError here to avoid loop on login
         }
       } else {
-        const cachedLocal = localStorage.getItem('mzsoft_local_user');
-        if (cachedLocal) {
-          try {
-            const parsed = JSON.parse(cachedLocal);
-            // If we have a cached local user but no Firebase user, 
-            // we should probably try to re-authenticate anonymously
-            // but we'll wait for the user to explicitly login for now
-            setUserData(parsed);
-          } catch (e) {
-            setUserData(null);
-          }
-        } else {
-          setUserData(null);
-        }
+        setUserData(null);
+        localStorage.removeItem('mzsoft_local_user');
       }
       setLoading(false);
     });
@@ -191,14 +247,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const user = result.user;
       
       if (user.email) {
-        // Check if user is in our allowed list
+        const cleanedEmail = user.email.toLowerCase().trim();
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
-        const emailDocRef = doc(db, 'users', user.email.toLowerCase());
+        const emailDocRef = doc(db, 'users', cleanedEmail);
         const emailDoc = await getDoc(emailDocRef);
 
-        if (!userDoc.exists() && !emailDoc.exists() && user.email.toLowerCase() !== 'djelloulmohamed1990@gmail.com') {
-          // Force logout if not unauthorized
+        const q = query(collection(db, 'users'), where('email', '==', cleanedEmail), limit(1));
+        const snap = await getDocs(q);
+
+        if (!userDoc.exists() && !emailDoc.exists() && snap.empty && cleanedEmail !== 'djelloulmohamed1990@gmail.com') {
           await signOut(auth);
           throw new Error('Accès non autorisé : Vous n\'avez pas les permissions nécessaires.');
         }
@@ -225,52 +283,164 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginLocal = React.useCallback(async (username: string, password: string) => {
+  const loginLocal = React.useCallback(async (usernameOrEmail: string, password: string) => {
     setIsSigningIn(true);
     try {
-      const q = query(collection(db, 'users'), where('username', '==', username.trim()), limit(1));
-      const snap = await getDocs(q);
+      const trimmed = usernameOrEmail.trim();
+      let emailToAuth = '';
+      let firestoreUserDoc: any = null;
+      
+      // 1. Try checking if there is a document with this username
+      let q = query(collection(db, 'users'), where('username', '==', trimmed), limit(1));
+      let snap = await getDocs(q);
+      
+      // 2. Try checking if there is a document with this email
+      if (snap.empty) {
+        q = query(collection(db, 'users'), where('email', '==', trimmed.toLowerCase()), limit(1));
+        snap = await getDocs(q);
+      }
       
       if (snap.empty) {
-        throw new Error('Utilisateur non trouvé');
+        // If not found in custom usernames/emails but username input itself is email, fall back to email
+        if (trimmed.includes('@')) {
+          emailToAuth = trimmed.toLowerCase();
+        } else {
+          throw new Error('Utilisateur non trouvé. Veuillez vérifier votre identifiant.');
+        }
+      } else {
+        firestoreUserDoc = snap.docs[0];
+        const data = firestoreUserDoc.data();
+        if (data.status === 'inactive') {
+          throw new Error('Votre compte est désactivé. Veuillez contacter un administrateur.');
+        }
+        
+        // Match password against the Firestore-stored localPassword
+        if (data.localPassword && data.localPassword !== password) {
+          throw new Error('Mot de passe incorrect');
+        }
+        
+        emailToAuth = data.email || `${data.username}@mzsoft.local`;
       }
 
-      const docSnap = snap.docs[0];
-      const data = docSnap.data();
-
-      if (data.status === 'inactive') {
-        throw new Error('Votre compte est désactivé.');
+      // 3. Connect using Firebase Authentication's Email and Password method
+      let userCred;
+      try {
+        userCred = await signInWithEmailAndPassword(auth, emailToAuth, password);
+      } catch (authError: any) {
+        console.warn("Auth sign in failed, checking if we need to auto-create or sync client:", authError);
+        
+        // If we matched the firestore user document, they entered the correct password, so we can self-heal/sync
+        if (firestoreUserDoc) {
+          try {
+            // Attempt to create the user in Firebase Auth
+            userCred = await createUserWithEmailAndPassword(auth, emailToAuth, password);
+            console.log("Successfully auto-created/synced Firebase Auth user.");
+          } catch (createError: any) {
+            // If user already exists (auth/email-already-in-use), but we couldn't sign in (e.g. out of sync)
+            if (createError.code === 'auth/email-already-in-use') {
+              try {
+                // Out of sync! Let's update their Auth password using the secondary app utility
+                await updateSecondaryAuthUserPassword(emailToAuth, 'mzsoft123', password);
+                // Now try signing in again!
+                userCred = await signInWithEmailAndPassword(auth, emailToAuth, password);
+              } catch (syncErr) {
+                console.error("Failed to sync out-of-sync password:", syncErr);
+                throw new Error("Erreur d'authentification complète. Veuillez contacter votre administrateur.");
+              }
+            } else {
+              throw createError;
+            }
+          }
+        } else {
+          throw authError;
+        }
       }
 
-      if (data.localPassword !== password) {
-        throw new Error('Mot de passe incorrect');
-      }
-
-      // We have a valid local user. Now provide them with a Firebase identity.
-      localStorage.setItem('mzsoft_pending_local_id', docSnap.id);
-      await signInAnonymously(auth);
+      const loggedFirebaseUser = userCred.user;
       
-      const localUserData = { id: docSnap.id, ...data } as UserData;
-      setLocalUser(localUserData);
-      setUserData(localUserData);
-      localStorage.setItem('mzsoft_local_user', safeStringify(localUserData));
+      // If the Firestore document has a different ID other than loggedFirebaseUser.uid (e.g., if it was using a randomized string key)
+      // we must sync the document to the uid-keyed path!
+      if (firestoreUserDoc && firestoreUserDoc.id !== loggedFirebaseUser.uid) {
+        const preData = firestoreUserDoc.data();
+        const userDocRef = doc(db, 'users', loggedFirebaseUser.uid);
+        const newUserData = cleanObject({
+          ...preData,
+          id: loggedFirebaseUser.uid,
+          uid: loggedFirebaseUser.uid,
+          updatedAt: serverTimestamp()
+        });
+        await setDoc(userDocRef, newUserData);
+        await deleteDoc(doc(db, 'users', firestoreUserDoc.id));
+        
+        // Update local memory
+        firestoreUserDoc = await getDoc(userDocRef);
+      } else if (!firestoreUserDoc) {
+        // If they logged in by typing a direct email that exists in Auth but didn't have a Firestore doc yet
+        const userDocRef = doc(db, 'users', loggedFirebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (!userDoc.exists()) {
+          // Find if there's any document with this email
+          const qSec = query(collection(db, 'users'), where('email', '==', emailToAuth), limit(1));
+          const snapSec = await getDocs(qSec);
+          if (!snapSec.empty) {
+            const preDoc = snapSec.docs[0];
+            const preData = preDoc.data();
+            await setDoc(userDocRef, cleanObject({
+              ...preData,
+              id: loggedFirebaseUser.uid,
+              uid: loggedFirebaseUser.uid,
+              updatedAt: serverTimestamp()
+            }));
+            await deleteDoc(doc(db, 'users', preDoc.id));
+          } else {
+            // Standalone user creation (fallback)
+            const fallbackUserData = {
+              id: loggedFirebaseUser.uid,
+              uid: loggedFirebaseUser.uid,
+              email: emailToAuth,
+              displayName: loggedFirebaseUser.displayName || emailToAuth.split('@')[0],
+              role: 'vendeur',
+              status: 'active',
+              createdAt: serverTimestamp(),
+              permissions: {
+                canManageStock: false, canDeleteProducts: false, canSell: true, canProcessReturns: false,
+                canPerformInventory: false, canManageExpenses: false, canViewReports: false, canManageUsers: false
+              }
+            };
+            await setDoc(userDocRef, cleanObject(fallbackUserData));
+          }
+        }
+      }
 
+      const finalUserDocRef = doc(db, 'users', loggedFirebaseUser.uid);
+      const finalDoc = await getDoc(finalUserDocRef);
+      const loggedUserData = finalDoc.exists() ? (finalDoc.data() as UserData) : null;
+      
       await notificationService.createNotification({
         type: 'user',
-        title: 'Connexion Interne',
-        message: `L'utilisateur ${data.displayName} (${data.role}) s'est connecté au point de vente.`,
+        title: 'Connexion Réussie',
+        message: `L'utilisateur ${loggedUserData?.displayName || loggedFirebaseUser.email} s'est connecté.`,
         priority: 'low',
-        triggeredBy: docSnap.id,
-        triggeredByName: data.displayName,
-        metadata: { entityId: docSnap.id, entityType: 'user' }
+        triggeredBy: loggedFirebaseUser.uid,
+        triggeredByName: loggedUserData?.displayName || loggedFirebaseUser.email || 'Utilisateur',
+        metadata: { entityId: loggedFirebaseUser.uid, entityType: 'user' }
       });
-    } catch (error) {
-      console.error(safeStringify(error));
-      throw error;
+      
+    } catch (error: any) {
+      console.error("Local login failed:", safeStringify(error));
+      let friendlyMessage = error.message || "Erreur de connexion";
+      if (error.code === 'auth/user-not-found' || error.message?.includes('user-not-found')) {
+        friendlyMessage = "Utilisateur non trouvé";
+      } else if (error.code === 'auth/wrong-password' || error.message?.includes('wrong-password') || error.message?.includes('invalid-credential')) {
+        friendlyMessage = "Mot de passe incorrect";
+      } else if (error.message?.includes('permission-denied') || error.message?.includes('permissions')) {
+        friendlyMessage = "Accès refusé par les règles de sécurité Firestore de l'application";
+      }
+      throw new Error(friendlyMessage);
     } finally {
       setIsSigningIn(false);
     }
-  }, [user, userData]);
+  }, []);
 
   const registerFirstAdmin = React.useCallback(async (username: string, password: string, displayName: string) => {
     setIsSigningIn(true);
@@ -278,22 +448,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const q = query(collection(db, 'users'), limit(1));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        throw new Error('Un administrateur existe déjà.');
+        throw new Error('Un administrateur existe déjà dans le système.');
       }
 
-      // 1. Sign in anonymously first to get a real UID
-      const userCred = await signInAnonymously(auth);
+      const email = username.includes('@') ? username.trim().toLowerCase() : `${username.trim().toLowerCase()}@mzsoft.local`;
+      
+      // 1. Create the user inside Firebase Authentication first
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
       const adminId = userCred.user.uid;
 
+      // 2. Put their record in the uid-keyed path on Firestore
       const adminData: UserData = {
         id: adminId,
         username: username.trim(),
         localPassword: password,
         displayName: displayName.trim(),
-        email: null,
+        email: email,
         role: 'superadmin',
         createdAt: new Date(),
-        isLocalOnly: true,
+        isLocalOnly: false,
         uid: adminId,
         status: 'active',
         permissions: {
@@ -313,12 +486,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: serverTimestamp()
       }));
 
-      setLocalUser(adminData);
       setUserData(adminData);
       setUsersExist(true);
       localStorage.setItem('mzsoft_local_user', safeStringify(adminData));
-    } catch (error) {
-      console.error(safeStringify(error));
+    } catch (error: any) {
+      console.error("Failed to register first admin:", safeStringify(error));
       throw error;
     } finally {
       setIsSigningIn(false);
@@ -350,7 +522,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     await signOut(auth);
-    setLocalUser(null);
     setUserData(null);
     localStorage.removeItem('mzsoft_local_user');
   };

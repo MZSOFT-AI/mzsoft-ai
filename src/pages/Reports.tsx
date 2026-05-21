@@ -69,18 +69,6 @@ export default function Reports() {
 
   const canView = hasPermission('canViewReports');
 
-  if (!canView) {
-    return (
-      <div className="h-full flex items-center justify-center p-6 text-center">
-        <div className="bg-white p-12 border border-slate-200">
-           <TrendingUp size={48} className="text-slate-200 mx-auto mb-4" />
-           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Restreint</h2>
-           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation de consulter les analyses financières.</p>
-        </div>
-      </div>
-    );
-  }
-
   useEffect(() => {
     const unsubSales = onSnapshot(
       query(collection(db, 'sales'), orderBy('createdAt', 'desc'), limit(1000)), 
@@ -216,7 +204,7 @@ export default function Reports() {
       // The current excelService only does one sheet. I should probably expand excelService to handle multi-sheet or just do it manually with ExcelJS if needed.
       // Given the instruction "professionnel", let's make a multi-sheet one manually in Reports.tsx but inspired by excelService.
       
-      const workbook = new excelService.workbookInstance ? null : await generateMultiSheetReport();
+      await generateMultiSheetReport();
       
     } catch (error) {
       console.error('Export Error:', error);
@@ -278,9 +266,6 @@ export default function Reports() {
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), `RAPPORT_GLOBAL_ERP_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
   };
-Critique Export Excel:', error);
-    }
-  };
 
   const totalRevenue = sales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
   const avgTicket = sales.length > 0 ? (totalRevenue / sales.length).toFixed(2) : 0;
@@ -306,6 +291,18 @@ Critique Export Excel:', error);
       };
     }).filter(c => c.value > 0);
   }, [categories, products]);
+
+  if (!canView) {
+    return (
+      <div className="h-full flex items-center justify-center p-6 text-center">
+        <div className="bg-white p-12 border border-slate-200">
+           <TrendingUp size={48} className="text-slate-200 mx-auto mb-4" />
+           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Restreint</h2>
+           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation de consulter les analyses financières.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-10">

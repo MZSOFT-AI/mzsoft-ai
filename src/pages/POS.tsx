@@ -38,7 +38,8 @@ import {
   Calendar,
   Layers,
   AlertCircle,
-  ArrowLeft
+  ArrowLeft,
+  HardHat
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { pdfService } from '../services/pdfService';
@@ -57,19 +58,6 @@ const POS: React.FC = () => {
   const currentUid = user?.uid || (userData && 'id' in userData ? (userData as any).id : null);
 
   const canSell = hasPermission ? hasPermission('canSell') : false;
-
-  if (!canSell) {
-    return (
-      <div className="h-full flex items-center justify-center p-6">
-        <div className="bg-white p-12 text-center border border-slate-200">
-           <AlertCircle size={48} className="text-rose-500 mx-auto mb-4" />
-           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Refusé</h2>
-           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation d'accéder au terminal de vente.</p>
-           <Button onClick={() => navigate('/')} className="mt-6 bg-slate-800">Retour au Tableau de Bord</Button>
-        </div>
-      </div>
-    );
-  }
   
   const { data: products, loading: productsLoading } = useCollection<Product>('products', [orderBy('name')]);
   const { data: categories } = useCollection<Category>('categories', [orderBy('name')]);
@@ -98,10 +86,18 @@ const POS: React.FC = () => {
   const [productForBarcode, setProductForBarcode] = useState<Product | null>(null);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
   
-  const { data: pendingSales } = useCollection<any>('pending_sales', currentUid ? [
-    where('userId', '==', activeSession?.userId || currentUid),
-    orderBy('createdAt', 'desc')
+  const { data: rawPendingSales } = useCollection<any>('pending_sales', currentUid ? [
+    where('userId', '==', activeSession?.userId || currentUid)
   ] : []);
+
+  const pendingSales = useMemo(() => {
+    if (!rawPendingSales) return [];
+    return [...rawPendingSales].sort((a: any, b: any) => {
+      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return timeB - timeA;
+    });
+  }, [rawPendingSales]);
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.total, 0), [cart]);
   const taxRate = useMemo(() => (settings.taxRate || 19) / 100, [settings.taxRate]);
@@ -696,6 +692,19 @@ const POS: React.FC = () => {
       }
     };
   }, [currentUid]);
+
+  if (!canSell) {
+    return (
+      <div className="h-full flex items-center justify-center p-6 w-full">
+        <div className="bg-white p-12 text-center border border-slate-200 shadow-sm max-w-md mx-auto my-12">
+           <AlertCircle size={48} className="text-rose-500 mx-auto mb-4" />
+           <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">Accès Refusé</h2>
+           <p className="text-sm text-slate-500 mt-2">Vous n'avez pas l'autorisation d'accéder au terminal de vente.</p>
+           <Button onClick={() => navigate('/')} className="mt-6 bg-slate-800">Retour au Tableau de Bord</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-64px)] bg-slate-100 overflow-hidden font-sans">

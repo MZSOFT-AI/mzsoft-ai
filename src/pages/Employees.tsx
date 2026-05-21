@@ -56,6 +56,11 @@ const Employees: React.FC = () => {
     isActive: true
   });
 
+  // State to manage per-project custom rates
+  const [tempProjectRates, setTempProjectRates] = useState<Array<{ projectId: string; projectName: string; rate: number }>>([]);
+  const [selectedRateProjectId, setSelectedRateProjectId] = useState('');
+  const [selectedRateProjectAmount, setSelectedRateProjectAmount] = useState('');
+
   const [paymentForm, setPaymentForm] = useState({
     employeeId: '',
     projectId: '',
@@ -106,6 +111,7 @@ const Employees: React.FC = () => {
       const data = {
         ...employeeForm,
         rate: Number(employeeForm.rate) || 0,
+        projectRates: employeeForm.salaryBasis === 'project' ? tempProjectRates : [],
         updatedAt: serverTimestamp()
       };
 
@@ -161,6 +167,24 @@ const Employees: React.FC = () => {
     }
   };
 
+  const getProjectPaymentStatus = () => {
+    if (!paymentForm.employeeId || !paymentForm.projectId) return null;
+    const emp = employees.find(e => e.id === paymentForm.employeeId);
+    if (!emp) return null;
+    
+    const customRate = emp.projectRates?.find(pr => pr.projectId === paymentForm.projectId)?.rate;
+    const totalPaid = payments
+      .filter(p => p.employeeId === paymentForm.employeeId && p.projectId === paymentForm.projectId)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    return {
+      isProjectBased: emp.salaryBasis === 'project',
+      rate: customRate || 0,
+      totalPaid,
+      remaining: customRate ? customRate - totalPaid : 0
+    };
+  };
+
   const resetEmployeeForm = () => {
     setEmployeeForm({
       name: '',
@@ -170,6 +194,9 @@ const Employees: React.FC = () => {
       rate: '',
       isActive: true
     });
+    setTempProjectRates([]);
+    setSelectedRateProjectId('');
+    setSelectedRateProjectAmount('');
     setSelectedEmployee(null);
   };
 
@@ -215,7 +242,7 @@ const Employees: React.FC = () => {
         });
       } else if (activeTab === 'payments') {
         const data = payments.map(p => ({
-          date: format(p.date?.toDate ? p.date.toDate() : new Date(p.date as any), 'dd/MM/yyyy'),
+          date: format((p.date as any)?.toDate ? (p.date as any).toDate() : new Date(p.date as any), 'dd/MM/yyyy'),
           employee: p.employeeName,
           project: p.projectName,
           doc: p.docId || '-',
@@ -319,14 +346,44 @@ const Employees: React.FC = () => {
                       <span className="text-slate-400 font-bold uppercase tracking-tight">Téléphone:</span>
                       <span className={cn("font-black", emp.phone ? "text-slate-700" : "text-slate-300")}>{emp.phone || 'Non renseigné'}</span>
                     </div>
-                    <div className="flex items-center justify-between text-xs border-t border-slate-50 pt-2">
-                       <span className="text-slate-400 font-bold uppercase tracking-tight">Taux ({emp.salaryBasis}):</span>
-                       <span className="font-black text-emerald-600">{formatCurrency(emp.rate)}</span>
+                    <div className="border-t border-slate-100 pt-2 mt-2 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-bold uppercase tracking-tight">Rémunération:</span>
+                        <span className="font-black text-blue-600 uppercase">
+                          {emp.salaryBasis === 'daily' && 'Journalier'}
+                          {emp.salaryBasis === 'monthly' && 'Mensuel'}
+                          {emp.salaryBasis === 'fixed' && 'Forfait Fixe'}
+                          {emp.salaryBasis === 'project' && 'Par Chantier'}
+                        </span>
+                      </div>
+                      
+                      {emp.salaryBasis === 'project' ? (
+                        <div className="bg-slate-50 border border-slate-100 p-2 space-y-1">
+                          <p className="text-[9px] font-black uppercase text-slate-400">Tarifs Chantiers :</p>
+                          {emp.projectRates && emp.projectRates.length > 0 ? (
+                            <div className="max-h-20 overflow-y-auto space-y-1 divide-y divide-slate-100 pr-1">
+                              {emp.projectRates.map((pr, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-[9px] font-bold text-slate-600 uppercase pt-1 first:pt-0">
+                                  <span className="truncate max-w-[120px]">{pr.projectName}</span>
+                                  <span className="text-emerald-600 font-black">{formatCurrency(pr.rate)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[9px] text-slate-400 italic font-medium">Aucun chantier convenu</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-400 font-bold uppercase tracking-tight">Tarif :</span>
+                          <span className="font-black text-emerald-600">{formatCurrency(emp.rate)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   <div className="mt-auto flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1 h-9" onClick={() => { setSelectedEmployee(emp); setEmployeeForm({ ...emp, rate: emp.rate.toString() } as any); setIsEmployeeModalOpen(true); }}>
+                    <Button variant="outline" size="sm" className="flex-1 h-9" onClick={() => { setSelectedEmployee(emp); setEmployeeForm({ ...emp, rate: emp.rate.toString() } as any); setTempProjectRates(emp.projectRates || []); setIsEmployeeModalOpen(true); }}>
                       <Edit2 size={14} className="mr-2" /> Gérer
                     </Button>
                     <Button variant="outline" size="sm" className="h-9 w-9 text-rose-500" onClick={async () => { if(window.confirm('Supprimer ?')) await deleteDoc(doc(db, 'employees', emp.id!)); }}>
@@ -357,7 +414,7 @@ const Employees: React.FC = () => {
                {payments.map(pay => (
                  <tr key={pay.id}>
                    <td className="text-[10px] font-black text-slate-500 uppercase">
-                     {pay.date ? format(pay.date.toDate ? pay.date.toDate() : new Date(pay.date as any), 'dd MMM yyyy', { locale: fr }) : '-'}
+                     {(pay.date as any) ? format(((pay.date as any).toDate ? (pay.date as any).toDate() : new Date(pay.date as any)), 'dd MMM yyyy', { locale: fr }) : '-'}
                    </td>
                    <td className="font-black text-slate-800 text-xs">{pay.employeeName}</td>
                    <td>
@@ -416,13 +473,91 @@ const Employees: React.FC = () => {
                   <option value="daily">Journalier</option>
                   <option value="monthly">Mensuel</option>
                   <option value="fixed">Forfait / Fixe</option>
+                  <option value="project">Par Chantier</option>
                 </select>
               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Taux / Montant (DA)</label>
-                <Input type="number" value={employeeForm.rate} onChange={e => setEmployeeForm({...employeeForm, rate: e.target.value})} />
+                <Input type="number" value={employeeForm.rate} onChange={e => setEmployeeForm({...employeeForm, rate: e.target.value})} disabled={employeeForm.salaryBasis === 'project'} />
               </div>
            </div>
+
+           {employeeForm.salaryBasis === 'project' && (
+             <div className="p-4 border border-slate-200 bg-slate-50 space-y-3">
+               <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">🛠️ Tarifs spécifiés par Chantier</h4>
+               <div className="flex gap-2 items-end">
+                 <div className="flex-1">
+                   <label className="block text-[8px] font-black uppercase tracking-wider text-slate-400 mb-0.5 font-bold">Choisir un chantier</label>
+                   <select 
+                     className="erp-select text-xs h-9 bg-white"
+                     value={selectedRateProjectId}
+                     onChange={e => setSelectedRateProjectId(e.target.value)}
+                   >
+                     <option value="">Sélectionner un chantier...</option>
+                     {projects.map(p => (
+                       <option key={p.id} value={p.id}>{p.name}</option>
+                     ))}
+                   </select>
+                 </div>
+                 <div className="w-28">
+                   <label className="block text-[8px] font-black uppercase tracking-wider text-slate-400 mb-0.5 font-bold">Tarif Convenu (DA)</label>
+                   <Input 
+                     type="number" 
+                     className="h-9 text-xs bg-white" 
+                     placeholder="Ex: 50000"
+                     value={selectedRateProjectAmount}
+                     onChange={e => setSelectedRateProjectAmount(e.target.value)}
+                   />
+                 </div>
+                 <button 
+                   type="button" 
+                   onClick={() => {
+                     if (!selectedRateProjectId) return toast.error('Veuillez choisir un chantier');
+                     if (!selectedRateProjectAmount) return toast.error('Veuillez spécifier le tarif');
+                     const prj = projects.find(p => p.id === selectedRateProjectId);
+                     if (!prj) return;
+                     
+                     const updated = [...tempProjectRates].filter(p => p.projectId !== selectedRateProjectId);
+                     updated.push({
+                       projectId: selectedRateProjectId,
+                       projectName: prj.name,
+                       rate: Number(selectedRateProjectAmount)
+                     });
+                     setTempProjectRates(updated);
+                     setSelectedRateProjectId('');
+                     setSelectedRateProjectAmount('');
+                     toast.success('Tarif de chantier ajouté');
+                   }}
+                   className="h-9 px-3 bg-slate-900 text-white font-black text-xs uppercase hover:bg-slate-800 transition-colors"
+                 >
+                   Ajouter
+                 </button>
+               </div>
+
+               {tempProjectRates.length > 0 ? (
+                 <div className="border border-slate-200 divide-y divide-slate-100 bg-white text-[11px] max-h-36 overflow-y-auto">
+                   {tempProjectRates.map((r, idx) => (
+                     <div key={idx} className="flex justify-between items-center p-2 font-bold uppercase text-slate-700">
+                       <span className="truncate pr-2">{r.projectName}</span>
+                       <div className="flex items-center gap-2">
+                         <span className="text-emerald-600 font-extrabold">{formatCurrency(r.rate)}</span>
+                         <button 
+                           type="button" 
+                           onClick={() => setTempProjectRates(tempProjectRates.filter(p => p.projectId !== r.projectId))}
+                           className="text-rose-500 hover:text-rose-700 font-black text-sm"
+                         >
+                           ×
+                         </button>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               ) : (
+                 <p className="text-[9px] text-slate-400 italic">Aucun tarif personnalisé défini. L'employé sera rémunéré selon un tarif libre lors de chaque paiement.</p>
+               )}
+             </div>
+           )}
+
            <div className="flex gap-3 pt-4">
              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEmployeeModalOpen(false)}>Annuler</Button>
              <Button type="submit" className="flex-1 bg-blue-600">Enregistrer</Button>
@@ -430,38 +565,82 @@ const Employees: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Payment Modal */}
-      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Enregistrer un Paiement">
-         <form onSubmit={handlePaymentSubmit} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Employé *</label>
-              <select required className="erp-select" value={paymentForm.employeeId} onChange={e => setPaymentForm({...paymentForm, employeeId: e.target.value})}>
-                <option value="">Sélectionner un employé</option>
-                {employees.filter(e => e.isActive).map(e => (
-                  <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Assigner Chantier</label>
-                <select className="erp-select" value={paymentForm.projectId} onChange={e => setPaymentForm({...paymentForm, projectId: e.target.value})}>
-                  <option value="">Hors Chantier (Libre)</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">N° Bon / Document</label>
-                <Input value={paymentForm.docId} onChange={e => setPaymentForm({...paymentForm, docId: e.target.value})} placeholder="Fac/Bon réf." />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Montant Versé (DA) *</label>
-                <Input required type="number" value={paymentForm.amount} onChange={e => setPaymentForm({...paymentForm, amount: e.target.value})} />
-              </div>
+       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Enregistrer un Paiement">
+          <form onSubmit={handlePaymentSubmit} className="space-y-4">
+             <div>
+               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Employé *</label>
+               <select required className="erp-select" value={paymentForm.employeeId} onChange={e => setPaymentForm({...paymentForm, employeeId: e.target.value})}>
+                 <option value="">Sélectionner un employé</option>
+                 {employees.filter(e => e.isActive).map(e => (
+                   <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
+                 ))}
+               </select>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+               <div>
+                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Assigner Chantier</label>
+                 <select className="erp-select" value={paymentForm.projectId} onChange={e => setPaymentForm({...paymentForm, projectId: e.target.value})}>
+                   <option value="">Hors Chantier (Libre)</option>
+                   {projects.map(p => (
+                     <option key={p.id} value={p.id}>{p.name}</option>
+                   ))}
+                 </select>
+               </div>
+               <div>
+                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">N° Bon / Document</label>
+                 <Input value={paymentForm.docId} onChange={e => setPaymentForm({...paymentForm, docId: e.target.value})} placeholder="Fac/Bon réf." />
+               </div>
+             </div>
+
+             {getProjectPaymentStatus() && (
+               <div className="p-3 bg-blue-50 border border-blue-200 space-y-2 text-xs">
+                 <div className="flex justify-between items-center font-black text-slate-700 uppercase">
+                   <span className="text-blue-700">📊 Suivi du Chantier :</span>
+                   <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 font-bold uppercase">
+                     {getProjectPaymentStatus()?.isProjectBased ? "Payé par Chantier" : "Mensuel / Horaire"}
+                   </span>
+                 </div>
+                 
+                 {getProjectPaymentStatus()!.rate > 0 ? (
+                   <div className="space-y-1.5">
+                     <div className="flex justify-between font-bold text-slate-600">
+                       <span>Tarif Spécifié :</span>
+                       <span className="font-black text-slate-800">{formatCurrency(getProjectPaymentStatus()!.rate)}</span>
+                     </div>
+                     <div className="flex justify-between font-bold text-slate-600">
+                       <span>Total Déjà Versé :</span>
+                       <span className="font-black text-rose-600">-{formatCurrency(getProjectPaymentStatus()!.totalPaid)}</span>
+                     </div>
+                     <div className="flex justify-between font-bold pt-1.5 border-t border-slate-200 text-slate-700">
+                       <span>Solde Restant :</span>
+                       <span className="font-extrabold text-emerald-600">{formatCurrency(getProjectPaymentStatus()!.remaining)}</span>
+                     </div>
+                     
+                     {getProjectPaymentStatus()!.remaining > 0 && (
+                       <button
+                         type="button"
+                         onClick={() => setPaymentForm({...paymentForm, amount: getProjectPaymentStatus()!.remaining.toString()})}
+                         className="w-full mt-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-wider py-1.5 rounded transition-colors"
+                       >
+                         👉 Régler le solde restant ({formatCurrency(getProjectPaymentStatus()!.remaining)})
+                       </button>
+                     )}
+                   </div>
+                 ) : (
+                   <div className="text-slate-500 italic text-[10px] font-bold">
+                     {getProjectPaymentStatus()?.isProjectBased 
+                       ? "⚠️ Aucun tarif spécifique n'a été enregistré pour ce chantier dans la fiche de cet employé." 
+                       : `Rémunération standard: ${formatCurrency(employees.find(e => e.id === paymentForm.employeeId)?.rate || 0)}`}
+                   </div>
+                 )}
+               </div>
+             )}
+
+             <div className="grid grid-cols-2 gap-4">
+               <div>
+                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Montant Versé (DA) *</label>
+                 <Input required type="number" value={paymentForm.amount} onChange={e => setPaymentForm({...paymentForm, amount: e.target.value})} />
+               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Date du Paiement</label>
                 <Input type="date" value={paymentForm.date} onChange={e => setPaymentForm({...paymentForm, date: e.target.value})} />

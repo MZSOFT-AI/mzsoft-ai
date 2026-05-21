@@ -10,7 +10,7 @@ import {
   orderBy,
   serverTimestamp
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, createSecondaryAuthUser, updateSecondaryAuthUserPassword } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { UserData, UserPermissions } from '../types';
 import { cn, safeStringify, cleanObject } from '../lib/utils';
@@ -81,32 +81,50 @@ const UserManagement: React.FC = () => {
       return;
     }
 
+    if (!invitePassword || invitePassword.length < 6) {
+      showToast("Le mot de passe doit contenir au moins 6 caractères", "error");
+      return;
+    }
+
     setIsInviting(true);
     try {
-      const emailId = inviteEmail ? inviteEmail.toLowerCase().trim() : `user_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      
+      let targetEmail = inviteEmail ? inviteEmail.toLowerCase().trim() : '';
+      if (!targetEmail) {
+        if (inviteUsername) {
+          targetEmail = `${inviteUsername.trim().toLowerCase()}@mzsoft.local`;
+        } else {
+          showToast("Veuillez saisir une adresse email ou un identifiant", "error");
+          setIsInviting(false);
+          return;
+        }
+      }
+
+      // 1. Create client-side authentication record using the secondary app
+      const authUid = await createSecondaryAuthUser(targetEmail, invitePassword);
+
+      // 2. Add Firestore document at users/{authUid}
       const userData = cleanObject({
-        email: inviteEmail || null,
-        username: inviteUsername || null,
+        id: authUid,
+        uid: authUid,
+        email: targetEmail,
+        username: inviteUsername ? inviteUsername.trim() : null,
         displayName: inviteName,
         role: inviteRole,
         createdAt: serverTimestamp(),
         isPreAuthorized: !!inviteEmail,
         isLocalOnly: !inviteEmail,
-        permissions: permissions
+        permissions: permissions,
+        localPassword: invitePassword,
+        status: 'active'
       });
 
-      if (!inviteEmail && invitePassword) {
-        userData.localPassword = invitePassword; 
-      }
-
-      await setDoc(doc(db, 'users', emailId), userData);
+      await setDoc(doc(db, 'users', authUid), userData);
       
-      showToast(inviteEmail ? 'Utilisateur pré-autorisé avec succès' : 'Utilisateur créé avec succès', 'success');
+      showToast('Utilisateur créé avec succès', 'success');
       resetForm();
-    } catch (error) {
+    } catch (error: any) {
       console.error(safeStringify(error));
-      showToast('Erreur lors de la création', 'error');
+      showToast(error.message || 'Erreur lors de la création', 'error');
     } finally {
       setIsInviting(false);
     }
@@ -135,14 +153,34 @@ const UserManagement: React.FC = () => {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
-      await updateDoc(doc(db, 'users', editingUser.id), cleanObject({
+      const oldPassword = editingUser.localPassword || 'mzsoft123';
+      const userEmail = editingUser.email || `${editingUser.username}@mzsoft.local`;
+
+      if (invitePassword && invitePassword !== editingUser.localPassword) {
+        if (invitePassword.length < 6) {
+          showToast("Le mot de passe doit contenir au moins 6 caractères", "error");
+          return;
+        }
+        try {
+          await updateSecondaryAuthUserPassword(userEmail, oldPassword, invitePassword);
+        } catch (err) {
+          console.warn("Could not sync password update to Firebase Auth:", err);
+        }
+      }
+
+      const updatedPayload: any = {
         role: inviteRole,
         permissions: permissions,
         displayName: inviteName,
         username: inviteUsername || null,
         updatedAt: serverTimestamp()
-      }));
-      showToast('Utilisateur mis à jour', 'success');
+      };
+      if (invitePassword) {
+        updatedPayload.localPassword = invitePassword;
+      }
+
+      await updateDoc(doc(db, 'users', editingUser.id), cleanObject(updatedPayload));
+      showToast('Utilisateur mis à jour avec succès', 'success');
       resetForm();
     } catch (error) {
       console.error(safeStringify(error));

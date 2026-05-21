@@ -19,10 +19,9 @@ const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [isLocalMode, setIsLocalMode] = useState(false);
 
   if (loading) return null;
-  if (user || userData) return <Navigate to="/" replace />;
+  if (user && userData) return <Navigate to="/" replace />;
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,17 +185,11 @@ const Login: React.FC = () => {
                     Initialiser le Système
                   </Button>
                 </form>
-              ) : !isLocalMode ? (
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 border border-blue-100 flex items-start gap-3">
-                    <Lock className="text-blue-600 mt-1" size={20} />
-                    <div>
-                        <p className="text-xs font-black text-blue-800 uppercase tracking-widest mb-1">Accès Sécurisé</p>
-                        <p className="text-xs text-blue-600 font-medium">Connectez-vous avec votre compte administratif.</p>
-                    </div>
-                  </div>
-
+              ) : (
+                <div className="space-y-6">
+                  {/* Google Login button */}
                   <button
+                    type="button"
                     onClick={() => {
                       if (typeof signIn === 'function') {
                         signIn();
@@ -218,73 +211,59 @@ const Login: React.FC = () => {
                     {isSigningIn ? 'VÉRIFICATION...' : 'CONTINUER AVEC GOOGLE'}
                   </button>
 
-                  <div className="flex items-center gap-4 py-2">
+                  {/* Elegant Separator */}
+                  <div className="flex items-center gap-4">
                     <div className="h-px flex-1 bg-slate-100" />
-                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">OU</span>
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest whitespace-nowrap">OU CONNEXION PAR EMAIL & MOT DE PASSE</span>
                     <div className="h-px flex-1 bg-slate-100" />
                   </div>
 
-                  <Button 
-                    onClick={() => setIsLocalMode(true)}
-                    variant="outline"
-                    className="w-full h-12 border-slate-200 text-slate-600 font-black uppercase text-[10px] tracking-widest"
-                  >
-                    Compte Local (Username)
-                  </Button>
+                  {/* Email & Password login form */}
+                  <form onSubmit={handleLocalLogin} className="space-y-4 row">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Email ou Identifiant</label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                        <input 
+                          type="text" 
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          placeholder="Ex: mohamed@gmail.com ou ali_vendeur"
+                          className="w-full h-12 pl-12 pr-4 bg-slate-50 border border-slate-200 rounded text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Mot de passe</label>
+                      <div className="relative">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                        <input 
+                          type="password" 
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full h-12 pl-12 pr-4 bg-slate-50 border border-slate-200 rounded text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <Button 
+                      type="submit" 
+                      disabled={isSigningIn}
+                      className="w-full h-12 bg-slate-800 hover:bg-slate-900 text-white rounded flex items-center justify-center gap-3 font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95"
+                    >
+                      {isSigningIn ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      ) : (
+                        <LogIn size={18} />
+                      )}
+                      Connexion
+                    </Button>
+                  </form>
                 </div>
-              ) : (
-                <form onSubmit={handleLocalLogin} className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Identifiant</label>
-                    <div className="relative">
-                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                      <input 
-                        type="text" 
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Ex: ali_vendeur"
-                        className="w-full h-12 pl-12 pr-4 bg-slate-50 border border-slate-200 rounded text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Mot de passe</label>
-                    <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                      <input 
-                        type="password" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full h-12 pl-12 pr-4 bg-slate-50 border border-slate-200 rounded text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <Button 
-                    type="submit" 
-                    disabled={isSigningIn}
-                    className="w-full h-12 bg-slate-800 hover:bg-slate-900 text-white rounded flex items-center justify-center gap-3 font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95"
-                  >
-                    {isSigningIn ? (
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    ) : (
-                      <LogIn size={18} />
-                    )}
-                    Connexion
-                  </Button>
-
-                  <button 
-                    type="button"
-                    onClick={() => setIsLocalMode(false)}
-                    className="w-full text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-500 transition-colors mt-2"
-                  >
-                    Retour au Google Login
-                  </button>
-                </form>
               )}
 
               <div className="pt-8 border-t border-slate-100 flex items-center justify-between">

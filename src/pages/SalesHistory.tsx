@@ -61,18 +61,26 @@ export default function SalesHistory() {
   }, [location.search]);
 
   useEffect(() => {
-    const currentUid = user?.uid || userData?.id;
-    if (!currentUid) return;
+    if (!user) return;
+    const currentUid = user.uid;
 
     const baseQuery = collection(db, 'sales');
     const q = isAdmin 
       ? query(baseQuery, orderBy('createdAt', 'desc'), limit(500))
-      : query(baseQuery, where('userId', '==', currentUid), orderBy('createdAt', 'desc'), limit(500));
+      : query(baseQuery, where('userId', '==', currentUid), limit(500));
 
     const unsubSales = onSnapshot(
       q, 
       (snapshot) => {
-        setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (!isAdmin) {
+          docs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return timeB - timeA;
+          });
+        }
+        setSales(docs);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'sales')
     );
@@ -95,7 +103,7 @@ export default function SalesHistory() {
       unsubSales();
       unsubSessions();
     };
-  }, [user, userData, isAdmin]);
+  }, [user, isAdmin]);
 
   useEffect(() => {
     if (selectedSale) {
