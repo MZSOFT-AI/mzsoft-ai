@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { cleanObject, formatCurrency, cn } from '../lib/utils';
@@ -8,7 +8,7 @@ import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { pdfService } from '../services/pdfService';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter, ShoppingCart, Users, Layers, Download } from 'lucide-react';
+import { History, Search, Calendar, FileText, Eye, RotateCcw, Printer, Filter, ShoppingCart, Users, Layers, Download, Trash2 } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -35,6 +35,40 @@ export default function SalesHistory() {
   const [isReturning, setIsReturning] = useState(false);
   const [returnItemModal, setReturnItemModal] = useState<{ sale: any, item: any } | null>(null);
   const [returnAllModal, setReturnAllModal] = useState<any | null>(null);
+
+  const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
+  const [saleToDelete, setSaleToDelete] = useState<any | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const handleDeleteSale = (sale: any) => {
+    setSaleToDelete(sale);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteSale = async () => {
+    if (!saleToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'sales', saleToDelete.id));
+      showToast("Vente supprimée de l'historique avec succès", "success");
+      setIsDeleteModalOpen(false);
+      setSaleToDelete(null);
+    } catch (err: any) {
+      showToast("Erreur lors de la suppression de la vente", "error");
+    }
+  };
+
+  const handleBulkDeleteSales = async () => {
+    if (selectedSaleIds.length === 0) return;
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedSaleIds.length} documents / ventes de l'historique ? Cette action est irréversible.`)) {
+      try {
+        await Promise.all(selectedSaleIds.map(id => deleteDoc(doc(db, 'sales', id))));
+        showToast(`${selectedSaleIds.length} documents / ventes supprimés`, "success");
+        setSelectedSaleIds([]);
+      } catch (err: any) {
+        showToast("Erreur lors de la suppression groupée de ventes", "error");
+      }
+    }
+  };
 
   const [showSearchById, setShowSearchById] = useState(false);
   const [ticketIdQuery, setTicketIdQuery] = useState('');
@@ -686,20 +720,39 @@ export default function SalesHistory() {
               </>
             )}
 
-            <button 
-              onClick={() => {
-                setSearchQuery('');
-                setStartDate('');
-                setEndDate('');
-                setSourceFilter('all');
-                setUserFilter('all');
-                setSessionFilter('all');
-                setGroupBy('day');
-              }}
-              className="ml-auto text-[10px] font-black uppercase text-rose-500 hover:underline flex items-center gap-1"
-            >
-              <RotateCcw size={12} /> Réinitialiser
-            </button>
+            <div className="ml-auto flex items-center gap-4">
+              <button 
+                onClick={() => {
+                  if (filteredSales.length === 0) return;
+                  const allFilteredIds = filteredSales.map(s => s.id);
+                  const allSelected = allFilteredIds.every(id => selectedSaleIds.includes(id));
+                  if (allSelected) {
+                    setSelectedSaleIds(selectedSaleIds.filter(id => !allFilteredIds.includes(id)));
+                  } else {
+                    setSelectedSaleIds([...new Set([...selectedSaleIds, ...allFilteredIds])]);
+                  }
+                }}
+                className="text-[10px] font-black uppercase text-blue-600 hover:underline flex items-center gap-1"
+              >
+                {filteredSales.length > 0 && filteredSales.map(s => s.id).every(id => selectedSaleIds.includes(id)) ? '🗳️ Désélectionner tout' : '🗳️ Tout sélectionner filtré'}
+              </button>
+
+              <button 
+                onClick={() => {
+                  setSearchQuery('');
+                  setStartDate('');
+                  setEndDate('');
+                  setSourceFilter('all');
+                  setUserFilter('all');
+                  setSessionFilter('all');
+                  setGroupBy('day');
+                  setSelectedSaleIds([]);
+                }}
+                className="text-[10px] font-black uppercase text-rose-500 hover:underline flex items-center gap-1"
+              >
+                <RotateCcw size={12} /> Réinitialiser
+              </button>
+            </div>
           </div>
       </div>
 
@@ -728,6 +781,32 @@ export default function SalesHistory() {
           </p>
         </div>
       </div>
+
+      {selectedSaleIds.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black text-rose-700 uppercase tracking-wider">📦 Sélection groupée : {selectedSaleIds.length} document(s) / vente(s) sélectionné(s)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setSelectedSaleIds([])} 
+              className="text-xs uppercase font-extrabold tracking-wider border-slate-300 bg-white px-4 h-9"
+            >
+              Annuler
+            </Button>
+            <Button 
+              variant="danger" 
+              size="sm"
+              onClick={handleBulkDeleteSales}
+              className="text-xs uppercase font-extrabold tracking-wider bg-rose-600 hover:bg-rose-700 text-white px-4 h-9 flex items-center gap-1.5"
+            >
+              <Trash2 size={14} /> Supprimer les {selectedSaleIds.length} sélectionné(s)
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Grouped View */}
       <div className="space-y-6">
@@ -786,7 +865,24 @@ export default function SalesHistory() {
                   <table className="mzsoft-table w-full">
                     <thead>
                       <tr>
-                        <th className="pl-6">Instant</th>
+                        <th className="pl-6 w-12 text-center">
+                          <input 
+                            type="checkbox"
+                            checked={groupData.sales.length > 0 && groupData.sales.every((s: any) => selectedSaleIds.includes(s.id))}
+                            onChange={(e) => {
+                              const groupIds = groupData.sales.map((s: any) => s.id);
+                              if (e.target.checked) {
+                                // Add all groupIds that are not already selected
+                                setSelectedSaleIds(prev => [...new Set([...prev, ...groupIds])]);
+                              } else {
+                                // Remove groupIds from selectedSaleIds
+                                setSelectedSaleIds(prev => prev.filter(id => !groupIds.includes(id)));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                          />
+                        </th>
+                        <th>Instant</th>
                         <th>Type</th>
                         <th>ID Document</th>
                         <th>Opérateur</th>
@@ -800,7 +896,21 @@ export default function SalesHistory() {
                     <tbody>
                       {groupData.sales.map((sale: any) => (
                         <tr key={sale.id} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="pl-6 text-xs text-slate-400 italic">
+                          <td className="pl-6 text-center w-12">
+                            <input 
+                              type="checkbox"
+                              checked={selectedSaleIds.includes(sale.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedSaleIds(prev => [...prev, sale.id]);
+                                } else {
+                                  setSelectedSaleIds(prev => prev.filter(id => id !== sale.id));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                            />
+                          </td>
+                          <td className="text-xs text-slate-400 italic">
                             {format(getSafeDate(sale.createdAt), 'HH:mm')}
                           </td>
                           <td>
@@ -848,6 +958,9 @@ export default function SalesHistory() {
                               </button>
                               <button onClick={() => setSelectedSale(sale)} className="p-1.5 text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 hover:bg-slate-50" title="Détails / Retour">
                                 <Eye size={14} />
+                              </button>
+                              <button onClick={() => handleDeleteSale(sale)} className="p-1.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50" title="Supprimer de l'Historique">
+                                <Trash2 size={14} />
                               </button>
                             </div>
                           </td>
@@ -1014,6 +1127,16 @@ export default function SalesHistory() {
         confirmText="Confirmer le retour"
         variant="danger"
         isLoading={isReturning}
+      />
+
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => { setIsDeleteModalOpen(false); setSaleToDelete(null); }}
+        onConfirm={confirmDeleteSale}
+        title="Supprimer la Vente"
+        message={`Êtes-vous sûr de vouloir supprimer définitivement cette vente de l'historique ? Cette action est irréversible.`}
+        confirmText="Supprimer"
+        variant="danger"
       />
     </div>
   );

@@ -55,6 +55,7 @@ const Quotes: React.FC = () => {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
 
   React.useEffect(() => {
     setCustomInfoOverride(settings.customCompanyInfo || '');
@@ -312,6 +313,23 @@ const Quotes: React.FC = () => {
     }
   };
 
+  const handleBulkDeleteQuotes = async () => {
+    if (selectedQuoteIds.length === 0) return;
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedQuoteIds.length} devis sélectionnés ? Cette action est irréversible.`)) {
+      try {
+        setIsSaving(true);
+        await Promise.all(selectedQuoteIds.map(id => dbService.deleteDocument('quotes', id)));
+        showToast(`${selectedQuoteIds.length} devis supprimés`, "success");
+        setSelectedQuoteIds([]);
+      } catch (err) {
+        console.error(err);
+        showToast("Erreur lors de la suppression groupée", "error");
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
   const handleConvertToSale = async () => {
     if (!selectedQuote) return;
     setIsSaving(true);
@@ -425,15 +443,32 @@ const Quotes: React.FC = () => {
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-black text-slate-700 uppercase tracking-wider">📜 Liste / Tableau des Devis</span>
+            {selectedQuoteIds.length > 0 && (
+              <span className="ml-2 text-xs font-black text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1 uppercase animate-pulse">
+                {selectedQuoteIds.length} sélectionné(s)
+              </span>
+            )}
           </div>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setShowList(!showList)} 
-            className="text-xs uppercase font-extrabold tracking-wider border-slate-350 bg-white hover:bg-slate-100 px-4 py-2 h-9"
-          >
-            {showList ? '🙈 Masquer la liste (Cacher)' : '👁️ Afficher la liste (Tableau)'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedQuoteIds.length > 0 && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleBulkDeleteQuotes}
+                className="text-xs uppercase font-extrabold tracking-widest bg-rose-600 hover:bg-rose-700 text-white px-4 h-9 flex items-center gap-1.5"
+              >
+                <Trash2 size={14} /> Supprimer la sélection ({selectedQuoteIds.length})
+              </Button>
+            )}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowList(!showList)} 
+              className="text-xs uppercase font-extrabold tracking-wider border-slate-350 bg-white hover:bg-slate-100 px-4 py-2 h-9"
+            >
+              {showList ? '🙈 Masquer la liste (Cacher)' : '👁️ Afficher la liste (Tableau)'}
+            </Button>
+          </div>
         </div>
 
         {showList && (
@@ -441,6 +476,20 @@ const Quotes: React.FC = () => {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-250 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                  <th className="p-4 w-12 text-center">
+                    <input 
+                      type="checkbox"
+                      checked={filteredQuotes.length > 0 && selectedQuoteIds.length === filteredQuotes.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedQuoteIds(filteredQuotes.map(q => q.id || ''));
+                        } else {
+                          setSelectedQuoteIds([]);
+                        }
+                      }}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-4">N° Devis</th>
                   <th className="p-4">Date</th>
                   <th className="p-4">Client</th>
@@ -452,14 +501,28 @@ const Quotes: React.FC = () => {
               <tbody className="divide-y divide-slate-100 text-xs">
                 {quotesLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400 font-bold animate-pulse uppercase tracking-wider font-sans">Chargement des devis...</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-400 font-bold animate-pulse uppercase tracking-wider font-sans">Chargement des devis...</td>
                   </tr>
                 ) : (filteredQuotes || []).length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400 font-bold italic">Aucun devis trouvé.</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-400 font-bold italic">Aucun devis trouvé.</td>
                   </tr>
                 ) : (filteredQuotes || []).map((quote) => (
                   <tr key={quote.id} className="hover:bg-slate-50/80 font-bold text-slate-700 transition-colors">
+                    <td className="p-4 text-center w-12">
+                      <input 
+                        type="checkbox"
+                        checked={selectedQuoteIds.includes(quote.id || '')}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedQuoteIds([...selectedQuoteIds, quote.id || '']);
+                          } else {
+                            setSelectedQuoteIds(selectedQuoteIds.filter(id => id !== quote.id));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                      />
+                    </td>
                     <td className="p-4 font-black text-slate-900">{quote.quoteNumber}</td>
                     <td className="p-4 text-slate-450 font-medium">
                       {quote.createdAt ? format((quote.createdAt as any)?.toDate ? (quote.createdAt as any).toDate() : (quote.createdAt instanceof Date ? quote.createdAt : new Date()), 'dd/MM/yyyy') : '-'}

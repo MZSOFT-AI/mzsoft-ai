@@ -59,7 +59,7 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:20px_20px]">
-      <div className="max-w-4xl w-full flex flex-col md:flex-row bg-white shadow-2xl border border-slate-300 overflow-hidden min-h-[500px]">
+      <div className="max-w-4xl w-full flex flex-col lg:flex-row bg-white shadow-2xl border border-slate-300 overflow-hidden min-h-[500px]">
         {/* Left Side: Brand/Visual */}
         <div className="hidden lg:flex w-1/2 bg-slate-800 p-12 flex-col justify-between relative overflow-hidden">
            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
@@ -74,7 +74,7 @@ const Login: React.FC = () => {
               <div className="flex items-center gap-3 mb-8">
                  <div className="w-12 h-12 bg-blue-600 rounded flex items-center justify-center shadow-xl transform -rotate-3 text-white overflow-hidden">
                     {settings.logo ? (
-                       <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                       <img src={settings.logo} alt="Logo" className="w-full h-full object-contain p-0.5" referrerPolicy="no-referrer" />
                     ) : (
                        <Package size={28} />
                     )}
@@ -104,7 +104,22 @@ const Login: React.FC = () => {
 
         {/* Right Side: Auth */}
         <div className="flex-1 p-8 md:p-12 flex flex-col justify-center bg-white">
-           <div className="mb-8">
+            {/* Mobile/Tablet Brand Logo - Hidden on desktop screens */}
+            <div className="lg:hidden flex items-center gap-3 mb-8 pb-6 border-b border-slate-100">
+               <div className="w-10 h-10 bg-blue-600 rounded flex items-center justify-center shadow-lg transform -rotate-3 text-white overflow-hidden shrink-0">
+                  {settings.logo ? (
+                     <img src={settings.logo} alt="Logo" className="w-full h-full object-contain p-0.5" referrerPolicy="no-referrer" />
+                  ) : (
+                     <Package size={22} />
+                  )}
+               </div>
+               <div className="min-w-0">
+                  <h2 className="text-xl font-black text-slate-800 leading-none tracking-tighter uppercase truncate">{settings.name}</h2>
+                  <p className="text-[9px] text-blue-600 font-black uppercase tracking-wider mt-0.5 truncate">{settings.slogan || 'Enterprise Solution'}</p>
+               </div>
+            </div>
+
+            <div className="mb-8">
               <div className="flex items-center gap-2 mb-2">
                  <div className="w-2 h-6 bg-blue-600"></div>
                  <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tighter">

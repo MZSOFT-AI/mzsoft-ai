@@ -284,6 +284,20 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["type", "title", "message", "isRead", "status", "priority", "createdAt"]
+    },
+    "Revenue": {
+      "title": "Revenu",
+      "description": "Entrée d'argent brute (Prestations, Ventes exceptionnelles, etc.)",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "reason": { "type": "string" },
+        "amount": { "type": "number" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["category", "reason", "amount", "userId", "createdAt"]
     }
   },
   "firestore": {
@@ -301,6 +315,7 @@
     "/quotes/{quoteId}": { "schema": "Quote", "description": "Devis clients" },
     "/invoices/{invoiceId}": { "schema": "Invoice", "description": "Factures clients" },
     "/settings/{settingId}": { "schema": "Settings", "description": "Configuration entreprise" },
-    "/notifications/{notificationId}": { "schema": "AppNotification", "description": "Alertes et notifications système" }
+    "/notifications/{notificationId}": { "schema": "AppNotification", "description": "Alertes et notifications système" },
+    "/revenues/{revenueId}": { "schema": "Revenue", "description": "Revenus comptables" }
   }
 }

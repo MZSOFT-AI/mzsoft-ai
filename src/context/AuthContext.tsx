@@ -403,7 +403,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               status: 'active',
               createdAt: serverTimestamp(),
               permissions: {
-                canManageStock: false, canDeleteProducts: false, canSell: true, canProcessReturns: false,
+                canManageStock: false, canDeleteProducts: true, canSell: true, canProcessReturns: false,
                 canPerformInventory: false, canManageExpenses: false, canViewReports: false, canManageUsers: false
               }
             };

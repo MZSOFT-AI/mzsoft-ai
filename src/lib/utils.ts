@@ -60,75 +60,137 @@ export function cleanObject(obj: any): any {
 }
 
 /**
+ * Safely clone objects with circular references to prevent stringify failures
+ */
+export function safeClone(val: any, depth = 0, visited = new WeakSet()): any {
+  if (val === null || val === undefined) {
+    return val;
+  }
+
+  const type = typeof val;
+  if (type !== 'object' && type !== 'function') {
+    return val;
+  }
+
+  // Handle circular references right at the entry point of object/function type
+  if (visited.has(val)) {
+    return '[Circular]';
+  }
+
+  // Prevent infinite depth
+  if (depth > 6) {
+    return '[Max Depth Reached]';
+  }
+
+  // Add to visited before recursing
+  visited.add(val);
+
+  // Handle common circular/complex browser types
+  if (typeof window !== 'undefined') {
+    if (val === window) return '[Window]';
+    if (val === document) return '[Document]';
+    try {
+      if (val instanceof Node || (val.nodeType && typeof val.nodeName === 'string')) {
+        return `[HTMLElement: ${val.nodeName || 'Element'}]`;
+      }
+    } catch {
+      return '[HTMLElement]';
+    }
+  }
+
+  // Handle Errors (even across iframe boundary, check name and message)
+  if (val instanceof Error || (val && typeof val === 'object' && ('name' in val || 'message' in val || 'stack' in val))) {
+    return {
+      name: val.name || 'Error',
+      message: val.message || String(val),
+      stack: val.stack
+    };
+  }
+
+  // Handle Dates
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
+
+  // Handle Firestore Timestamp specifically
+  if (typeof val.toDate === 'function') {
+    try {
+      return val.toDate().toISOString();
+    } catch {
+      // ignore
+    }
+  }
+
+  // Handle Functions
+  if (type === 'function') {
+    return `[Function: ${val.name || 'anonymous'}]`;
+  }
+
+  // Handle Array
+  if (Array.isArray(val)) {
+    const arrClone: any[] = [];
+    for (let i = 0; i < val.length; i++) {
+      try {
+        arrClone.push(safeClone(val[i], depth + 1, visited));
+      } catch (e) {
+        arrClone.push('[Unreadable Item]');
+      }
+    }
+    return arrClone;
+  }
+
+  // Handle Object
+  const constructorName = val.constructor?.name;
+
+  // Let's check for standard types we shouldn't fully serialize if they are internal engines
+  if (constructorName && !['Object', 'Array'].includes(constructorName)) {
+    // If it's a minified Firestore or complex SDK class name, or starts with uppercase and is not a plain Object,
+    // let's avoid traversing it deeply to prevent crashing on native fields / internal pointers.
+    if (constructorName.length <= 2 || constructorName.includes('_') || ['Firestore', 'DocumentReference', 'CollectionReference', 'Query', 'QuerySnapshot', 'DocumentSnapshot'].includes(constructorName)) {
+      return `[Internal Class: ${constructorName}]`;
+    }
+  }
+
+  const objClone: any = {};
+  
+  // Get all keys safely
+  let keys: string[] = [];
+  try {
+    keys = Object.keys(val);
+  } catch {
+    try {
+      keys = [];
+      for (const k in val) {
+        keys.push(k);
+      }
+    } catch {
+      return `[Uninspectable Object: ${constructorName || 'Unknown'}]`;
+    }
+  }
+
+  for (const key of keys) {
+    try {
+      // Safely access properties - some getters can throw exceptions
+      const propValue = val[key];
+      objClone[key] = safeClone(propValue, depth + 1, visited);
+    } catch (err: any) {
+      objClone[key] = `[Unreadable Property: ${err?.message || 'Error'}]`;
+    }
+  }
+
+  return objClone;
+}
+
+/**
  * Safely stringify objects with circular references
  * Manually traverses the object to avoid circularity issues before JSON.stringify
  */
 export function safeStringify(obj: any): string {
-  // Use a WeakSet to track visited objects for circularity detection (avoids memory leaks)
-  const cache = new WeakSet();
-  
-  const replacer = (key: string, value: any) => {
-    // Handle null/undefined immediately
-    if (value === null || value === undefined) return value;
-    
-    // Only objects and functions can be circular
-    if (typeof value === 'object' || typeof value === 'function') {
-      if (cache.has(value)) {
-        return '[Circular]';
-      }
-      
-      // Handle common circular/complex types that shouldn't be stringified deeply
-      if (typeof window !== 'undefined') {
-        if (value === window) return '[Window]';
-        if (value === document) return '[Document]';
-        
-        // Handle DOM elements (they are highly circular)
-        try {
-          if (value instanceof Node || (value.nodeType && typeof value.nodeName === 'string')) {
-            return `[HTMLElement: ${value.nodeName || 'Element'}]`;
-          }
-        } catch (e) {
-          // Ignore
-        }
-      }
-
-      // Handle Errors
-      if (value instanceof Error) {
-        return {
-          name: value.name,
-          message: value.message,
-          stack: value.stack
-        };
-      }
-
-      // Handle Firestore and other complex class instances
-      try {
-        const constructorName = value.constructor?.name;
-        if (constructorName && !['Object', 'Array', 'Date', 'Number', 'String', 'Boolean'].includes(constructorName)) {
-          // Special handling for Firestore objects
-          if (typeof value.toDate === 'function') return value.toDate().toISOString();
-          
-          // For other complex objects (especially minified ones like Y2, Ka from Firestore), return just the name
-          // Minified names are usually very short (1-2 chars) or contain underscores
-          if (constructorName.length <= 2 || constructorName.includes('_')) { 
-             return `[Internal Object: ${constructorName}]`;
-          }
-        }
-      } catch (e) {
-        return '[Uninspectable Object]';
-      }
-
-      // Only add to cache if it's an object we might visit again (not converted to primitive yet)
-      cache.add(value);
-    }
-    return value;
-  };
-
   try {
-    return JSON.stringify(obj, replacer, 2);
+    const cleanObj = safeClone(obj);
+    return JSON.stringify(cleanObj, null, 2);
   } catch (err) {
     try {
-      // Fallback for extreme cases: use String() which handles circularity by just printing the top level
       return `[Serialization Failure: ${String(err)}]`;
     } catch {
       return '[Total Serialization Failure]';

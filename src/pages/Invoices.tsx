@@ -57,6 +57,7 @@ const Invoices: React.FC = () => {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isPreview, setIsPreview] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
 
@@ -516,6 +517,23 @@ const Invoices: React.FC = () => {
     }
   };
 
+  const handleBulkDeleteInvoices = async () => {
+    if (selectedInvoiceIds.length === 0) return;
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedInvoiceIds.length} factures sélectionnées ? Cette action est irréversible.`)) {
+      try {
+        setIsSaving(true);
+        await Promise.all(selectedInvoiceIds.map(id => dbService.deleteDocument('invoices', id)));
+        showToast(`${selectedInvoiceIds.length} factures supprimées`, "success");
+        setSelectedInvoiceIds([]);
+      } catch (err) {
+        console.error(err);
+        showToast("Erreur lors de la suppression groupée de factures", "error");
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
   if (!isAdmin) {
     return (
       <div className="p-6 max-w-7xl mx-auto bg-white min-h-screen flex items-center justify-center">
@@ -569,15 +587,32 @@ const Invoices: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="text-xs font-black text-slate-700 uppercase tracking-wider">📜 Historique des Factures Précédentes</span>
               <span className="bg-emerald-100 text-emerald-800 text-[9px] uppercase font-black px-2 py-0.5 rounded">Superadmin</span>
+              {selectedInvoiceIds.length > 0 && (
+                <span className="ml-2 text-xs font-black text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1 uppercase animate-pulse">
+                  {selectedInvoiceIds.length} sélectionné(s)
+                </span>
+              )}
             </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowList(!showList)} 
-              className="text-xs uppercase font-extrabold tracking-wider border-slate-350 bg-white hover:bg-slate-100 px-4 py-2 h-9"
-            >
-              {showList ? '🙈 Masquer la liste (Cacher)' : '👁️ Afficher la liste (Tableau)'}
-            </Button>
+            <div className="flex items-center gap-2">
+              {selectedInvoiceIds.length > 0 && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleBulkDeleteInvoices}
+                  className="text-xs uppercase font-extrabold tracking-widest bg-rose-600 hover:bg-rose-700 text-white px-4 h-9 flex items-center gap-1.5"
+                >
+                  <Trash2 size={14} /> Supprimer la sélection ({selectedInvoiceIds.length})
+                </Button>
+              )}
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowList(!showList)} 
+                className="text-xs uppercase font-extrabold tracking-wider border-slate-350 bg-white hover:bg-slate-100 px-4 py-2 h-9"
+              >
+                {showList ? '🙈 Masquer la liste (Cacher)' : '👁️ Afficher la liste (Tableau)'}
+              </Button>
+            </div>
           </div>
 
           {showList && (
@@ -585,6 +620,20 @@ const Invoices: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-250 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                    <th className="p-4 w-12 text-center">
+                      <input 
+                        type="checkbox"
+                        checked={filteredInvoices.length > 0 && selectedInvoiceIds.length === filteredInvoices.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedInvoiceIds(filteredInvoices.map(i => i.id || ''));
+                          } else {
+                            setSelectedInvoiceIds([]);
+                          }
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                      />
+                    </th>
                     <th className="p-4">N° Facture</th>
                     <th className="p-4">Date</th>
                     <th className="p-4">Client</th>
@@ -596,14 +645,28 @@ const Invoices: React.FC = () => {
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {invoicesLoading ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-400 font-bold animate-pulse uppercase tracking-wider">Chargement des factures...</td>
+                      <td colSpan={7} className="p-8 text-center text-slate-400 font-bold animate-pulse uppercase tracking-wider">Chargement des factures...</td>
                     </tr>
                   ) : (filteredInvoices || []).length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-400 font-bold italic">Aucune facture enregistrée ou trouvée.</td>
+                      <td colSpan={7} className="p-8 text-center text-slate-400 font-bold italic">Aucune facture enregistrée ou trouvée.</td>
                     </tr>
                   ) : (filteredInvoices || []).map((invoice) => (
                     <tr key={invoice.id} className="hover:bg-slate-50/80 font-bold text-slate-700 transition-colors">
+                      <td className="p-4 text-center w-12">
+                        <input 
+                          type="checkbox"
+                          checked={selectedInvoiceIds.includes(invoice.id || '')}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedInvoiceIds([...selectedInvoiceIds, invoice.id || '']);
+                            } else {
+                              setSelectedInvoiceIds(selectedInvoiceIds.filter(id => id !== invoice.id));
+                            }
+                          }}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-4 font-black text-slate-900">{invoice.invoiceNumber}</td>
                       <td className="p-4 text-slate-450 font-medium">
                         {invoice.createdAt ? format(new Date((invoice.createdAt as any).toDate ? (invoice.createdAt as any).toDate() : (invoice.createdAt instanceof Date ? invoice.createdAt : new Date())), 'dd/MM/yyyy') : '-'}
@@ -635,6 +698,13 @@ const Invoices: React.FC = () => {
                             title="Imprimer"
                           >
                             <Printer size={16} />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); setIsDeleteModalOpen(true); }}
+                            className="p-1.5 hover:bg-rose-50 rounded text-rose-500 hover:text-rose-600 transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       </td>

@@ -231,11 +231,18 @@ export interface Project extends BaseEntity {
 
 export interface Employee extends BaseEntity {
   name: string;
+  firstName?: string;
+  lastName?: string;
   role: string;
   phone?: string;
-  salaryBasis: 'daily' | 'monthly' | 'fixed' | 'project';
+  salaryBasis: 'daily' | 'weekly' | 'monthly' | 'fixed' | 'project';
   rate: number;
   isActive: boolean;
+  idNumber?: string;
+  hireDate?: string;
+  photoBase64?: string;
+  assignedProjects?: string[];
+  status?: 'active' | 'suspended' | 'resigned' | 'archived';
   projectRates?: Array<{ projectId: string; projectName: string; rate: number }>;
 }
 

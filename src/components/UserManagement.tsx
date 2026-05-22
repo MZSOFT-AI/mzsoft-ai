@@ -196,7 +196,7 @@ const UserManagement: React.FC = () => {
     setInviteRole(user.role as any);
     setPermissions(user.permissions || {
       canManageStock: user.role === 'admin' || user.role === 'manager',
-      canDeleteProducts: user.role === 'admin',
+      canDeleteProducts: true,
       canSell: true,
       canProcessReturns: user.role === 'admin' || user.role === 'manager',
       canPerformInventory: user.role === 'admin' || user.role === 'manager',
@@ -213,7 +213,7 @@ const UserManagement: React.FC = () => {
       [key]: !prev[key]
     }) : {
       canManageStock: false,
-      canDeleteProducts: false,
+      canDeleteProducts: true,
       canSell: true,
       canProcessReturns: false,
       canPerformInventory: false,

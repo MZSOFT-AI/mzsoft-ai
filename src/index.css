@@ -1,41 +1,46 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 :root {
-  --background: #f8fafc;
-  --foreground: #1e293b;
-  --primary: #2563eb;
+  --background: #f6f8fb;
+  --foreground: #23282d;
+  --primary: #0274be;
   --secondary: #64748b;
+  --astra-blue: #0274be;
+  --astra-dark: #191e23;
+  --astra-border: #e2e8f0;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer components {
   .mzsoft-card {
-    @apply bg-white border border-slate-200 shadow-sm rounded-none;
+    @apply bg-white border border-slate-200/80 shadow-xs rounded-xl;
   }
   .mzsoft-table {
     @apply w-full text-left text-sm border-collapse;
   }
   .mzsoft-table th {
-    @apply bg-slate-100 p-2 border border-slate-200 font-bold uppercase text-[11px] tracking-wider text-slate-600;
+    @apply bg-slate-50 p-3.5 border border-slate-200/80 font-extrabold uppercase text-[10px] tracking-wider text-slate-500;
   }
   .mzsoft-table td {
-    @apply p-2 border border-slate-200 bg-white;
+    @apply p-3.5 border border-slate-200/80 bg-white text-slate-700 font-medium;
   }
 }
 
-/* Custom scrollbar */
+/* Custom modern WordPress scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -44,9 +49,9 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #0274be;
 }

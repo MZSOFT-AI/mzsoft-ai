@@ -384,5 +384,11 @@ service cloud.firestore {
       allow delete: if isSignedIn();
     }
 
+    match /revenues/{revenueId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() || isSuperAdmin() || hasPermission('canManageExpenses');
+      allow delete: if isAdmin() || isSuperAdmin();
+    }
+
   }
 }

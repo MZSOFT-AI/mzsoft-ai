@@ -105,7 +105,7 @@ const Users: React.FC = () => {
       case 'manager':
         return {
           canManageStock: true,
-          canDeleteProducts: false,
+          canDeleteProducts: true,
           canSell: true,
           canProcessReturns: true,
           canPerformInventory: true,
@@ -116,7 +116,7 @@ const Users: React.FC = () => {
       case 'vendeur':
         return {
           canManageStock: false,
-          canDeleteProducts: false,
+          canDeleteProducts: true,
           canSell: true,
           canProcessReturns: false,
           canPerformInventory: false,

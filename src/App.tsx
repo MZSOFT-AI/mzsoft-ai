@@ -36,6 +36,7 @@ const Employees = React.lazy(() => import('./pages/Employees'));
 const InventoryAudits = React.lazy(() => import('./pages/InventoryAudits'));
 const InventoryAuditDetails = React.lazy(() => import('./pages/InventoryAuditDetails'));
 const Notifications = React.lazy(() => import('./pages/Notifications'));
+const Accounting = React.lazy(() => import('./pages/Accounting'));
 
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -91,6 +92,7 @@ export default function App() {
                           <Route path="customers" element={<Customers />} />
                           <Route path="suppliers" element={<Suppliers />} />
                           <Route path="expenses" element={<Expenses />} />
+                          <Route path="accounting" element={<Accounting />} />
                           <Route path="cash-history" element={<CashHistory />} />
                           <Route path="reports" element={<Reports />} />
                           <Route path="users" element={<Users />} />

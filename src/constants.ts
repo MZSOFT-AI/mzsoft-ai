@@ -34,7 +34,8 @@ import {
   FileText,
   Info,
   HardHat,
-  Users
+  Users,
+  Scale
 } from 'lucide-react';
 
 export const APP_CONFIG = {
@@ -56,12 +57,13 @@ export const MENU_ITEMS = [
   { id: 'customers', label: 'Clients', path: '/customers', icon: Users2 },
   { id: 'suppliers', label: 'Fournisseurs', path: '/suppliers', icon: Truck },
   { id: 'expenses', label: 'Dépenses', path: '/expenses', icon: DollarSign },
+  { id: 'accounting', label: 'Comptabilité', path: '/accounting', icon: Scale },
   { id: 'cash-history', label: 'Historique Caisse', path: '/cash-history', icon: Wallet },
   { id: 'users', label: 'Utilisateurs', path: '/users', icon: ShieldCheck },
   { id: 'quotes', label: 'Devis', path: '/quotes', icon: FileText },
   { id: 'invoices', label: 'Facturation', path: '/invoices', icon: FileText },
   { id: 'projects', label: 'Chantiers', path: '/projects', icon: HardHat },
-  { id: 'employees', label: 'Ressources Humaines', path: '/employees', icon: Users },
+  { id: 'employees', label: 'Employés', path: '/employees', icon: Users },
   { id: 'reports', label: 'Rapports', path: '/reports', icon: BarChart2 },
   { id: 'settings', label: 'Paramètres', path: '/settings', icon: Settings },
 ];
