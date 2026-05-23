@@ -49,6 +49,7 @@ const Quotes: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
   const [isConvertToInvoiceModalOpen, setIsConvertToInvoiceModalOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
@@ -313,20 +314,23 @@ const Quotes: React.FC = () => {
     }
   };
 
-  const handleBulkDeleteQuotes = async () => {
+  const handleBulkDeleteQuotes = () => {
     if (selectedQuoteIds.length === 0) return;
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedQuoteIds.length} devis sélectionnés ? Cette action est irréversible.`)) {
-      try {
-        setIsSaving(true);
-        await Promise.all(selectedQuoteIds.map(id => dbService.deleteDocument('quotes', id)));
-        showToast(`${selectedQuoteIds.length} devis supprimés`, "success");
-        setSelectedQuoteIds([]);
-      } catch (err) {
-        console.error(err);
-        showToast("Erreur lors de la suppression groupée", "error");
-      } finally {
-        setIsSaving(false);
-      }
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const confirmBulkDeleteQuotes = async () => {
+    try {
+      setIsSaving(true);
+      await Promise.all(selectedQuoteIds.map(id => dbService.deleteDocument('quotes', id)));
+      showToast(`${selectedQuoteIds.length} devis supprimés`, "success");
+      setSelectedQuoteIds([]);
+    } catch (err) {
+      console.error(err);
+      showToast("Erreur lors de la suppression groupée", "error");
+    } finally {
+      setIsSaving(false);
+      setIsBulkDeleteModalOpen(false);
     }
   };
 
@@ -951,6 +955,16 @@ const Quotes: React.FC = () => {
         onConfirm={handleDelete}
         title="Supprimer le Devis"
         message="Êtes-vous sûr de vouloir supprimer ce devis ? Cette action est irréversible."
+        confirmText="Supprimer"
+        variant="danger"
+      />
+
+      <ConfirmationModal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        onConfirm={confirmBulkDeleteQuotes}
+        title="Suppression Groupée"
+        message={`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedQuoteIds.length} devis sélectionnés ? Cette action est irréversible.`}
         confirmText="Supprimer"
         variant="danger"
       />

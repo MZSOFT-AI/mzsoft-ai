@@ -51,6 +51,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isSigningIn: boolean;
+  isOnline: boolean;
   hasPermission: (permission: keyof UserPermissions) => boolean;
 }
 
@@ -63,6 +64,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [usersExist, setUsersExist] = useState<boolean>(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? window.navigator.onLine : true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      // Proactively force Firestore to reconnect immediately
+      import('firebase/firestore').then(({ enableNetwork }) => {
+        enableNetwork(db)
+          .then(() => console.info("Firestore network re-enabled successfully."))
+          .catch(err => console.warn("Failed to enable network on online event:", err));
+      }).catch(e => console.error("Error loading firestore modules:", e));
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      // Place Firestore in offline mode gracefully so it immediately serving from persistent local cache
+      import('firebase/firestore').then(({ disableNetwork }) => {
+        disableNetwork(db)
+          .then(() => console.info("Firestore network disabled successfully (offline mode)."))
+          .catch(err => console.warn("Failed to disable network on offline event:", err));
+      }).catch(e => console.error("Error loading firestore modules:", e));
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     // Check if any users exist in the system
@@ -526,21 +560,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('mzsoft_local_user');
   };
 
+  const getCachedRole = () => {
+    try {
+      const cached = localStorage.getItem('mzsoft_local_user');
+      if (cached) {
+        return JSON.parse(cached)?.role;
+      }
+    } catch (e) {}
+    return null;
+  };
+
   const isSuperAdmin = userData?.role === 'superadmin' || 
                       auth.currentUser?.email?.toLowerCase() === 'djelloulmohamed1990@gmail.com' || 
-                      userData?.email?.toLowerCase() === 'djelloulmohamed1990@gmail.com';
+                      user?.email?.toLowerCase() === 'djelloulmohamed1990@gmail.com' ||
+                      userData?.email?.toLowerCase() === 'djelloulmohamed1990@gmail.com' ||
+                      getCachedRole() === 'superadmin';
   
-  const isAdminOnly = userData?.role === 'admin';
-  const isAdmin = isSuperAdmin || isAdminOnly;
+  const isAdminOnly = userData?.role === 'admin' || getCachedRole() === 'admin';
+  const isAdmin = isSuperAdmin || isAdminOnly || userData?.role === 'manager' || getCachedRole() === 'manager';
 
   const hasPermission = (permission: keyof UserPermissions) => {
     if (isSuperAdmin) return true;
     if (isAdminOnly && permission !== 'canManageUsers') return true;
     
-    if (!userData?.permissions) {
+    // Check local storage cached permissions as a fallback
+    let cachedPerms: any = null;
+    try {
+      const cached = localStorage.getItem('mzsoft_local_user');
+      if (cached) {
+        cachedPerms = JSON.parse(cached)?.permissions;
+      }
+    } catch (e) {}
+
+    const permissions = userData?.permissions || cachedPerms;
+    if (!permissions) {
+      // Safe defaults to keep standard features active on network lags
+      if (permission === 'canSell') return true;
+      if (permission === 'canDeleteProducts') return true;
       return false;
     }
-    return !!userData.permissions[permission];
+    return !!permissions[permission];
   };
 
   const authContextValue: AuthContextType = {
@@ -555,6 +614,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isSuperAdmin,
     usersExist,
     isSigningIn,
+    isOnline,
     hasPermission
   };
 

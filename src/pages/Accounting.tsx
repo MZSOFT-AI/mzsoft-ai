@@ -6,7 +6,9 @@ import {
   orderBy, 
   serverTimestamp, 
   doc, 
-  addDoc
+  addDoc,
+  limit,
+  getDocs
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { dbService } from '../firebase/db';
@@ -151,11 +153,11 @@ export default function Accounting() {
     if (!user) return;
     setLoading(true);
 
-    const qSales = query(collection(db, 'sales'), orderBy('createdAt', 'desc'));
-    const qInvoices = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'));
-    const qExpenses = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
-    const qRevenues = query(collection(db, 'revenues'), orderBy('createdAt', 'desc'));
-    const qLogs = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'));
+    const qSales = query(collection(db, 'sales'), orderBy('createdAt', 'desc'), limit(300));
+    const qInvoices = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'), limit(300));
+    const qExpenses = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'), limit(300));
+    const qRevenues = query(collection(db, 'revenues'), orderBy('createdAt', 'desc'), limit(300));
+    const qLogs = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'), limit(300));
 
     const unsubscribeSales = onSnapshot(qSales, (snap) => {
       setSales(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));

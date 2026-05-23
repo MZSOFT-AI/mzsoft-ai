@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
-import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Sale, Product, AppNotification } from '../types';
@@ -96,19 +96,17 @@ const Dashboard: React.FC = () => {
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
     // Products query
-    const productsUnsub = onSnapshot(query(collection(db, 'products')), (snap) => {
+    getDocs(query(collection(db, 'products'))).then((snap) => {
       setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
-    });
+    }).catch(err => console.error("Error loading products:", err));
 
     // Customers query
-    const customersUnsub = onSnapshot(query(collection(db, 'customers')), (snap) => {
+    getDocs(query(collection(db, 'customers'))).then((snap) => {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }).catch(err => console.error("Error loading customers:", err));
 
     return () => {
       salesUnsub();
-      productsUnsub();
-      customersUnsub();
     };
   }, [user, isAdmin, canViewFinancials]);
 

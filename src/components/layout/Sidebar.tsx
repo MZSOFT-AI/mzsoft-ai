@@ -76,11 +76,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
 
   return (
     <aside className={cn(
-      "fixed left-0 top-0 h-full w-[260px] bg-white text-[#23282d] z-50 flex flex-col shadow-sm border-r border-slate-200/80 transition-transform duration-300 ease-in-out lg:translate-x-0",
+      "fixed left-0 top-0 h-full w-[260px] bg-white dark:bg-[#111827] text-[#23282d] dark:text-slate-350 z-50 flex flex-col shadow-sm border-r border-slate-200/80 dark:border-slate-800 transition-transform duration-300 ease-in-out lg:translate-x-0",
       isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
     )}>
       {/* Brand Header */}
-      <div className="p-6 bg-slate-50/80 border-b border-slate-200/80 relative overflow-hidden group">
+      <div className="p-6 bg-slate-50/80 dark:bg-[#111827]/80 border-b border-slate-200/80 dark:border-slate-800 relative overflow-hidden group">
         <div className="absolute inset-0 bg-gradient-to-br from-[#0274be]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
         <div className="flex items-center justify-between relative z-10 gap-2">
           <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -96,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
               )}
             </motion.div>
             <div className="min-w-0">
-              <span className="font-extrabold text-[#191e23] text-lg tracking-tight block leading-tight truncate uppercase">{settings.name}</span>
+              <span className="font-extrabold text-[#191e23] dark:text-slate-100 text-lg tracking-tight block leading-tight truncate uppercase">{settings.name}</span>
               <span className="text-[9px] font-black text-[#0274be] uppercase tracking-widest mt-0.5 block truncate">
                 {settings.slogan || 'ERP & POS SYSTEM'}
               </span>
@@ -106,7 +106,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
           <div className="flex items-center gap-1.5 shrink-0">
             <button 
               onClick={() => setIsPanelOpen(true)}
-              className="p-1.5 relative hover:bg-slate-150 rounded-xl transition-colors text-slate-500 hover:text-slate-800"
+              className="p-1.5 relative hover:bg-slate-150 dark:hover:bg-slate-800 rounded-xl transition-colors text-slate-500 hover:text-slate-200"
               aria-label="Notifications"
             >
               <Bell size={18} />
@@ -116,7 +116,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     exit={{ scale: 0 }}
-                    className="absolute top-0.5 right-0.5 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-white animate-pulse"
+                    className="absolute top-0.5 right-0.5 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-white dark:border-[#111827] animate-pulse"
                   >
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </motion.span>
@@ -127,7 +127,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
             {/* mobile close menu button */}
             <button
               onClick={onClose}
-              className="lg:hidden p-1.5 hover:bg-slate-150 rounded-xl transition-colors text-slate-500 hover:text-slate-800"
+              className="lg:hidden p-1.5 hover:bg-slate-150 dark:hover:bg-slate-800 rounded-xl transition-colors text-slate-500 hover:text-slate-200"
               aria-label="Close menu"
             >
               <X size={18} />
@@ -137,26 +137,26 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
       </div>
 
       {/* Profile Area */}
-      <div className="p-4 bg-slate-50/50 border-b border-slate-150">
-         <div className="flex items-center gap-3 bg-white p-2 border border-slate-200/80 rounded-xl shadow-xs">
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[#0274be] shrink-0">
+      <div className="p-4 bg-slate-50/50 dark:bg-[#111827]/40 border-b border-slate-150 dark:border-slate-850">
+         <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-xs">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[#0274be] shrink-0">
                <User size={16} />
             </div>
             <div className="flex-1 min-w-0">
-               <p className="text-xs font-black truncate text-[#191e23]">{userData?.displayName || user?.displayName || 'Utilisateur'}</p>
+               <p className="text-xs font-black truncate text-[#191e23] dark:text-slate-100">{userData?.displayName || user?.displayName || 'Utilisateur'}</p>
                <div className="flex items-center gap-1.5">
                   <span className={cn(
                     "w-1.5 h-1.5 rounded-full",
                     loading ? "bg-amber-500" : "bg-emerald-500"
                   )} />
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest truncate">{userData?.role || 'Employé'}</p>
+                  <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest truncate">{userData?.role || 'Employé'}</p>
                </div>
             </div>
          </div>
       </div>
 
       {/* Main Nav */}
-      <nav className="flex-1 overflow-y-auto py-6 custom-scrollbar px-3 space-y-8 bg-white">
+      <nav className="flex-1 overflow-y-auto py-6 custom-scrollbar px-3 space-y-8 bg-white dark:bg-[#111827]">
         {sections.map((section, idx) => {
           const visibleItems = section.items
             .map(id => MENU_ITEMS.find(item => item.id === id))
@@ -166,7 +166,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
 
           return (
             <div key={idx} className="space-y-2">
-              <h3 className="px-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-3 border-b border-slate-100 pb-1">
+              <h3 className="px-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-3 border-b border-slate-100 dark:border-slate-800 pb-1">
                 {section.title}
               </h3>
               <div className="space-y-0.5">
@@ -175,14 +175,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
                     key={item.id}
                     to={item.path}
                     onClick={() => {
-                      if (onClose) onClose();
+                       if (onClose) onClose();
                     }}
                     className={({ isActive }) =>
                       cn(
                         "group flex items-center justify-between px-3.5 py-2.5 rounded-lg transition-all text-xs font-extrabold uppercase tracking-wider",
                         isActive
                           ? "bg-[#0274be] text-white shadow-xs"
-                          : "text-slate-600 hover:bg-slate-50 hover:text-[#0274be]"
+                          : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-[#0274be] dark:hover:text-[#0274be]"
                       )
                     }
                   >
@@ -203,10 +203,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
       </nav>
 
       {/* Footer / Logout */}
-      <div className="p-4 bg-slate-50 border-t border-slate-200">
+      <div className="p-4 bg-slate-50 dark:bg-[#111827] border-t border-slate-205 dark:border-slate-800">
         <button
           onClick={handleLogout}
-          className="group flex items-center gap-3 w-full px-4 py-3 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all rounded-xl text-xs font-black uppercase tracking-widest border border-red-200 overflow-hidden relative"
+          className="group flex items-center gap-3 w-full px-4 py-3 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 hover:bg-red-600 dark:hover:bg-red-600 hover:text-white transition-all rounded-xl text-xs font-black uppercase tracking-widest border border-red-200 dark:border-red-900/40 overflow-hidden relative"
         >
           <div className="absolute inset-y-0 left-0 w-1 bg-red-600 transform -translate-x-full group-hover:translate-x-0 transition-transform" />
           <LogOut size={16} className="relative z-10 transition-transform group-hover:-translate-x-1" />

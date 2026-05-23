@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Plus, Edit2, Trash2, Tags as TagIcon, PackageCheck } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useForm } from 'react-hook-form';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 import { useNotification } from '../context/NotificationContext';
 
@@ -15,6 +16,7 @@ export default function Categories() {
   const [categories, setCategories] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
   const { register, handleSubmit, reset } = useForm();
   
   useEffect(() => {
@@ -56,14 +58,7 @@ export default function Categories() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Voulez-vous vraiment supprimer cette catégorie ?')) {
-      try {
-        await dbService.deleteDocument('categories', id);
-        showToast('Catégorie supprimée', 'success');
-      } catch (error) {
-        showToast('Erreur lors de la suppression', 'error');
-      }
-    }
+    setCategoryToDelete(id);
   };
 
   return (
@@ -150,6 +145,26 @@ export default function Categories() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmationModal
+        isOpen={categoryToDelete !== null}
+        onClose={() => setCategoryToDelete(null)}
+        onConfirm={async () => {
+          if (!categoryToDelete) return;
+          try {
+            await dbService.deleteDocument('categories', categoryToDelete);
+            showToast('Catégorie supprimée', 'success');
+          } catch (error) {
+            showToast('Erreur lors de la suppression', 'error');
+          } finally {
+            setCategoryToDelete(null);
+          }
+        }}
+        title="Confirmation de Suppression"
+        message="Voulez-vous vraiment supprimer cette catégorie ? Cela n'affectera pas les produits déjà créés."
+        confirmText="Supprimer"
+        variant="danger"
+      />
     </div>
   );
 }

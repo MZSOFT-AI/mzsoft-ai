@@ -55,7 +55,7 @@ export default function App() {
           <NotificationProvider>
             <SettingsProvider>
               <SessionProvider>
-                <div className="min-h-screen bg-slate-50">
+                <div className="min-h-screen bg-slate-50 dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 transition-colors duration-200">
                   <Toaster 
                     position="top-right" 
                     reverseOrder={false}

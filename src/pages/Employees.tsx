@@ -12,7 +12,8 @@ import {
   where,
   getDocs
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { Employee, Project, ProjectPayment } from '../types';
@@ -114,14 +115,14 @@ interface LogData {
 }
 
 const Employees: React.FC = () => {
-  const { isAdmin, user, userData } = useAuth();
+  const { isAdmin, isSuperAdmin, user, userData } = useAuth();
   const { settings } = useSettings();
   
   // App active roles
-  const isSuperadmin = (userData?.role as string) === 'superadmin';
-  const isSystemAdmin = isSuperadmin || (userData?.role as string) === 'admin' || (userData?.role as string) === 'manager';
-  const isRH = (userData?.role as string) === 'rh' || isSystemAdmin;
-  const isComptable = (userData?.role as string) === 'comptable' || isSystemAdmin;
+  const isSuperadmin = isSuperAdmin || (userData?.role as string) === 'superadmin';
+  const isSystemAdmin = isAdmin || isSuperadmin || (userData?.role as string) === 'manager';
+  const isRH = (userData?.role as string) === 'rh' || isSystemAdmin || isSuperadmin;
+  const isComptable = (userData?.role as string) === 'comptable' || isSystemAdmin || isSuperadmin;
   
   // Real-time Firestore sync states
   const [employees, setEmployees] = useState<any[]>([]);
@@ -197,6 +198,9 @@ const Employees: React.FC = () => {
     photoBase64: '',
     documents: [] as Array<{ name: string; type: string; fileBase64: string; addedAt: string }>
   });
+
+  const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const [attendanceForm, setAttendanceForm] = useState({
     employeeId: '',
@@ -358,11 +362,22 @@ const Employees: React.FC = () => {
     if (!combinedName) return toast.error("Le nom et le prénom de l'employé sont requis");
 
     try {
+      let photoUrl = employeeForm.photoBase64; // Keep existing or empty
+
+      if (selectedPhotoFile) {
+        const fileExt = selectedPhotoFile.name.split('.').pop();
+        const fileName = `employees/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const storageRef = ref(storage, fileName);
+        const uploadResult = await uploadBytes(storageRef, selectedPhotoFile);
+        photoUrl = await getDownloadURL(uploadResult.ref);
+      }
+
       const matriculeStr = employeeForm.matricule || getNextMatricule(employees);
       const data = {
         ...employeeForm,
         name: combinedName,
         matricule: matriculeStr,
+        photoBase64: photoUrl, // We keep the field name for compatibility or rename to photoUrl
         rate: Number(employeeForm.rate) || 0,
         baseSalary: Number(employeeForm.baseSalary) || Number(employeeForm.rate) || 0,
         bonusesDefault: Number(employeeForm.bonusesDefault) || 0,
@@ -1035,6 +1050,8 @@ const Employees: React.FC = () => {
       photoBase64: '',
       documents: []
     });
+    setSelectedPhotoFile(null);
+    setPhotoPreview(null);
   };
 
   // Advanced listings filtering
@@ -1507,7 +1524,7 @@ const Employees: React.FC = () => {
                       <div className="flex items-center gap-4 mb-4">
                         <div className="w-12 h-12 bg-slate-100 rounded-2xl border border-slate-200/60 overflow-hidden flex items-center justify-center text-slate-500 font-black shrink-0 relative">
                           {emp.photoBase64 ? (
-                            <img src={emp.photoBase64} alt="Profil" className="w-full h-full object-cover" />
+                            <img src={emp.photoBase64} alt="Profil" className="w-full h-full object-cover" loading="lazy" />
                           ) : (
                             emp.name?.charAt(0)
                           )}
@@ -2035,8 +2052,8 @@ const Employees: React.FC = () => {
           {/* PHOTO PROFILE LOADER & PREVIEW */}
           <div className="bg-slate-50 p-4 rounded-xl flex flex-col sm:flex-row items-center gap-4 border border-slate-200/60">
             <div className="w-16 h-16 rounded-full bg-slate-200 border-2 border-[#0274be]/30 flex items-center justify-center shrink-0 overflow-hidden relative group">
-              {employeeForm.photoBase64 ? (
-                <img src={employeeForm.photoBase64} alt="Previsualisation" className="w-full h-full object-cover" />
+              {(photoPreview || employeeForm.photoBase64) ? (
+                <img src={photoPreview || employeeForm.photoBase64} alt="Previsualisation" className="w-full h-full object-cover" />
               ) : (
                 <Users size={28} className="text-slate-400" />
               )}
@@ -2050,11 +2067,8 @@ const Employees: React.FC = () => {
                   const file = e.target.files?.[0];
                   if (file) {
                     if (file.size > 2 * 1024 * 1024) return toast.error("Fichier de photo trop lourd (Max 2 Mo)");
-                    const reader = new FileReader();
-                    reader.onload = (readerEvent) => {
-                      setEmployeeForm({...employeeForm, photoBase64: readerEvent.target?.result as string});
-                    };
-                    reader.readAsDataURL(file);
+                    setSelectedPhotoFile(file);
+                    setPhotoPreview(URL.createObjectURL(file));
                   }
                 }}
                 className="hidden" 

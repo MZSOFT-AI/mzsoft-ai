@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Plus, Search, Phone, Mail, User, Edit2, Trash2, Download, UserCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import Modal from '../components/ui/Modal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { format } from 'date-fns';
 import { Customer } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
@@ -19,6 +20,7 @@ export default function Customers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
   const { register, handleSubmit, reset } = useForm();
 
   useEffect(() => {
@@ -62,14 +64,7 @@ export default function Customers() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Supprimer ce client ?')) {
-      try {
-        await dbService.deleteDocument('customers', id);
-        showToast('Client supprimé', 'success');
-      } catch (error) {
-        showToast('Erreur lors de la suppression', 'error');
-      }
-    }
+    setCustomerToDelete(id);
   };
 
   const filtered = customers.filter(c => 
@@ -256,6 +251,26 @@ export default function Customers() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmationModal
+        isOpen={customerToDelete !== null}
+        onClose={() => setCustomerToDelete(null)}
+        onConfirm={async () => {
+          if (!customerToDelete) return;
+          try {
+            await dbService.deleteDocument('customers', customerToDelete);
+            showToast('Client supprimé', 'success');
+          } catch (error) {
+            showToast('Erreur lors de la suppression', 'error');
+          } finally {
+            setCustomerToDelete(null);
+          }
+        }}
+        title="Confirmation de Suppression"
+        message="Voulez-vous vraiment supprimer ce client ? Cette action est irréversible."
+        confirmText="Supprimer"
+        variant="danger"
+      />
     </div>
   );
 }

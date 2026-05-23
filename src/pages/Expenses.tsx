@@ -13,6 +13,7 @@ import {
   Wrench, Activity, Tag, HelpCircle, Check, X, FileSpreadsheet, ChevronDown, ChevronUp, Image
 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { formatCurrency } from '../lib/utils';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -87,7 +88,7 @@ const STANDARD_CATEGORIES = [
 
 export default function Expenses() {
   const { showToast } = useNotification();
-  const { user, userData, hasPermission } = useAuth();
+  const { user, userData, hasPermission, isAdmin, isSuperAdmin } = useAuth();
   const { activeSession } = useSession();
 
   // Firestore collections loads 
@@ -100,6 +101,7 @@ export default function Expenses() {
   // Active Layout Sections
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
   const [previewJustificatif, setPreviewJustificatif] = useState<string | null>(null);
   
   // Dashboard & Visual Analytics Toggle 
@@ -144,7 +146,7 @@ export default function Expenses() {
   // Chantier, Employé, Véhicule, Fournisseur, Service, Matériel, Autre
   const [primaryAllocationType, setPrimaryAllocationType] = useState<string>('Chantier');
 
-  const canManage = hasPermission('canManageExpenses');
+  const canManage = hasPermission('canManageExpenses') || isAdmin || isSuperAdmin;
 
   // Fetch collections
   useEffect(() => {
@@ -372,23 +374,7 @@ export default function Expenses() {
 
   const handleDelete = async (exp: Expense) => {
     if (!exp.id) return;
-    if (window.confirm(`Voulez-vous vraiment supprimer définitivement la dépense ${exp.expenseNum || ''} d'un montant de ${formatCurrency(exp.amount)} ?`)) {
-      try {
-        await deleteDoc(doc(db, 'expenses', exp.id));
-        
-        // Re-adjust active session budget
-        if (activeSession) {
-          await dbService.updateDocument('daily_closings', activeSession.id, {
-            expenses: increment(-exp.amount),
-            netCash: increment(exp.amount),
-            updatedAt: serverTimestamp()
-          });
-        }
-        showToast("Dépense supprimée définitivement", "success");
-      } catch (error) {
-        showToast("Erreur lors de la suppression", "error");
-      }
-    }
+    setExpenseToDelete(exp);
   };
 
   // Multicriteria Frontend Filter Algorithms
@@ -1616,6 +1602,34 @@ export default function Expenses() {
         </Modal>
       )}
 
+      <ConfirmationModal
+        isOpen={expenseToDelete !== null}
+        onClose={() => setExpenseToDelete(null)}
+        onConfirm={async () => {
+          if (!expenseToDelete || !expenseToDelete.id) return;
+          try {
+            await deleteDoc(doc(db, 'expenses', expenseToDelete.id));
+            
+            // Re-adjust active session budget
+            if (activeSession) {
+              await dbService.updateDocument('daily_closings', activeSession.id, {
+                expenses: increment(-expenseToDelete.amount),
+                netCash: increment(expenseToDelete.amount),
+                updatedAt: serverTimestamp()
+              });
+            }
+            showToast("Dépense supprimée définitivement", "success");
+          } catch (error) {
+            showToast("Erreur lors de la suppression", "error");
+          } finally {
+            setExpenseToDelete(null);
+          }
+        }}
+        title="Confirmation de Suppression"
+        message={`Voulez-vous vraiment supprimer définitivement la dépense ${expenseToDelete?.expenseNum || ''} d'un montant de ${formatCurrency(expenseToDelete?.amount || 0)} ?`}
+        confirmText="Supprimer"
+        variant="danger"
+      />
     </div>
   );
 }

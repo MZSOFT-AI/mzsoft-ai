@@ -16,6 +16,7 @@ import { UserData, UserPermissions } from '../types';
 import { cn, safeStringify, cleanObject } from '../lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
+import ConfirmationModal from './ui/ConfirmationModal';
 import { Badge } from './ui/Badge';
 import { 
   User as UserIcon, 
@@ -44,6 +45,7 @@ const UserManagement: React.FC = () => {
   const [invitePassword, setInvitePassword] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'vendeur' | 'manager'>('vendeur');
   const [isInviting, setIsInviting] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
   
   const [permissions, setPermissions] = useState<UserData['permissions']>({
     canManageStock: false,
@@ -238,15 +240,7 @@ const UserManagement: React.FC = () => {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
-
-    try {
-      await deleteDoc(doc(db, 'users', userId));
-      showToast('Utilisateur supprimé', 'success');
-    } catch (error) {
-      console.error(safeStringify(error));
-      showToast('Erreur lors de la suppression', 'error');
-    }
+    setUserToDelete(userId);
   };
 
   const filteredUsers = users.filter(user => 
@@ -521,6 +515,27 @@ const UserManagement: React.FC = () => {
           </p>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={userToDelete !== null}
+        onClose={() => setUserToDelete(null)}
+        onConfirm={async () => {
+          if (!userToDelete) return;
+          try {
+            await deleteDoc(doc(db, 'users', userToDelete));
+            showToast('Utilisateur supprimé', 'success');
+          } catch (error) {
+            console.error(safeStringify(error));
+            showToast('Erreur lors de la suppression', 'error');
+          } finally {
+            setUserToDelete(null);
+          }
+        }}
+        title="Confirmation de Suppression"
+        message="Êtes-vous sûr de vouloir supprimer cet utilisateur ?"
+        confirmText="Supprimer"
+        variant="danger"
+      />
     </div>
   );
 };

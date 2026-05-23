@@ -15,7 +15,7 @@ interface SettingsContextType {
 
 const DEFAULT_SETTINGS: CompanySettings = {
   id: 'company',
-  name: 'Ma Boutique',
+  name: 'SARL MZ TECH SECURITY',
   currency: 'DZD',
   currencySymbol: 'DA',
   slogan: 'Votre satisfaction est notre priorité',
@@ -46,7 +46,17 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'company'), (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data() as CompanySettings;
+        let data = docSnap.data() as CompanySettings;
+        if (data.name === 'Ma Boutique') {
+          data = { ...data, name: 'SARL MZ TECH SECURITY' };
+          if (isAdmin) {
+            setDoc(doc(db, 'settings', 'company'), { 
+              name: 'SARL MZ TECH SECURITY',
+              updatedAt: serverTimestamp()
+            }, { merge: true })
+              .catch(err => console.warn("Failed to auto-update company name in firestore:", err));
+          }
+        }
         setSettings(data);
         // Sync global dynamic values
         setGlobalCurrency(data.currency, data.currencySymbol);

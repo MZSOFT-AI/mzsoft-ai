@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Plus, Search, Phone, Mail, User, Edit2, Trash2, Truck, UserCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import Modal from '../components/ui/Modal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 import { useNotification } from '../context/NotificationContext';
 
@@ -16,6 +17,7 @@ export default function Suppliers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [supplierToDelete, setSupplierToDelete] = useState<string | null>(null);
   const { register, handleSubmit, reset } = useForm();
 
   useEffect(() => {
@@ -54,14 +56,7 @@ export default function Suppliers() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Voulez-vous vraiment supprimer ce fournisseur ?')) {
-      try {
-        await dbService.deleteDocument('suppliers', id);
-        showToast('Fournisseur supprimé', 'success');
-      } catch (error) {
-        showToast('Erreur lors de la suppression', 'error');
-      }
-    }
+    setSupplierToDelete(id);
   };
 
   const filtered = suppliers.filter(s => 
@@ -183,6 +178,26 @@ export default function Suppliers() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmationModal
+        isOpen={supplierToDelete !== null}
+        onClose={() => setSupplierToDelete(null)}
+        onConfirm={async () => {
+          if (!supplierToDelete) return;
+          try {
+            await dbService.deleteDocument('suppliers', supplierToDelete);
+            showToast('Fournisseur supprimé', 'success');
+          } catch (error) {
+            showToast('Erreur lors de la suppression', 'error');
+          } finally {
+            setSupplierToDelete(null);
+          }
+        }}
+        title="Confirmation de Suppression"
+        message="Voulez-vous vraiment supprimer ce fournisseur ? Cette action est irréversible."
+        confirmText="Supprimer"
+        variant="danger"
+      />
     </div>
   );
 }

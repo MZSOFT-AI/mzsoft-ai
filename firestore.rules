@@ -246,7 +246,7 @@ service cloud.firestore {
         && (!data.keys().hasAny(['notifyLowStock']) || data.notifyLowStock is bool)
         && (!data.keys().hasAny(['notifyStockDiscrepancy']) || data.notifyStockDiscrepancy is bool)
         && (!data.keys().hasAny(['notifyCashDiscrepancy']) || data.notifyCashDiscrepancy is bool)
-        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time);
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time || data.updatedAt is timestamp);
     }
 
     match /settings/{settingId} {
@@ -381,6 +381,24 @@ service cloud.firestore {
     match /employeePayments/{paymentId} {
       allow read: if isSignedIn();
       allow create, update: if isAdmin() || isSuperAdmin();
+      allow delete: if isSignedIn();
+    }
+
+    match /employeeAttendance/{attendanceId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    match /employeeLeaves/{leaveId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    match /employeeLogs/{logId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
       allow delete: if isSignedIn();
     }
 

@@ -53,6 +53,7 @@ const Invoices: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -517,20 +518,23 @@ const Invoices: React.FC = () => {
     }
   };
 
-  const handleBulkDeleteInvoices = async () => {
+  const handleBulkDeleteInvoices = () => {
     if (selectedInvoiceIds.length === 0) return;
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedInvoiceIds.length} factures sélectionnées ? Cette action est irréversible.`)) {
-      try {
-        setIsSaving(true);
-        await Promise.all(selectedInvoiceIds.map(id => dbService.deleteDocument('invoices', id)));
-        showToast(`${selectedInvoiceIds.length} factures supprimées`, "success");
-        setSelectedInvoiceIds([]);
-      } catch (err) {
-        console.error(err);
-        showToast("Erreur lors de la suppression groupée de factures", "error");
-      } finally {
-        setIsSaving(false);
-      }
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const confirmBulkDeleteInvoices = async () => {
+    try {
+      setIsSaving(true);
+      await Promise.all(selectedInvoiceIds.map(id => dbService.deleteDocument('invoices', id)));
+      showToast(`${selectedInvoiceIds.length} factures supprimées`, "success");
+      setSelectedInvoiceIds([]);
+    } catch (err) {
+      console.error(err);
+      showToast("Erreur lors de la suppression groupée de factures", "error");
+    } finally {
+      setIsSaving(false);
+      setIsBulkDeleteModalOpen(false);
     }
   };
 
@@ -1298,6 +1302,16 @@ const Invoices: React.FC = () => {
         onConfirm={handleDelete}
         title="Supprimer la Facture"
         message="Êtes-vous sûr de vouloir supprimer cette facture ? Cela n'annulera pas les mouvements de stock déjà effectués."
+        confirmText="Supprimer"
+        variant="danger"
+      />
+
+      <ConfirmationModal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        onConfirm={confirmBulkDeleteInvoices}
+        title="Suppression Groupée"
+        message={`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedInvoiceIds.length} factures sélectionnées ? Cette action est irréversible.`}
         confirmText="Supprimer"
         variant="danger"
       />

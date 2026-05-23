@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../firebase/db';
 import { orderBy } from 'firebase/firestore';
@@ -78,13 +78,13 @@ const Inventory: React.FC = () => {
   const { data: categories } = useCollection<Category>('categories', [orderBy('name')]);
   const { data: suppliers } = useCollection<Supplier>('suppliers', [orderBy('name')]);
   
-  const { user, userData, isAdmin, hasPermission } = useAuth();
+  const { user, userData, isAdmin, isSuperAdmin, hasPermission } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
   const [isStockInModalOpen, setIsStockInModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   
-  const canManageStock = hasPermission('canManageStock');
+  const canManageStock = hasPermission('canManageStock') || isAdmin || isSuperAdmin;
   const canDeleteProducts = true;
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -97,6 +97,9 @@ const Inventory: React.FC = () => {
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [productForBarcode, setProductForBarcode] = useState<Product | null>(null);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -517,6 +520,18 @@ const Inventory: React.FC = () => {
     return matchesSearch && matchesCategory && matchesStock;
   });
 
+  // Reset page when switching filters
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory, stockFilter]);
+
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage) || 1;
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredProducts, currentPage]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-white border border-slate-200">
@@ -689,7 +704,7 @@ const Inventory: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredProducts.map((product) => {
+            {paginatedProducts.map((product) => {
               const stockStatus = product.stockQuantity <= 0 ? 'out' : 
                                  product.stockQuantity <= (product.minStockLevel || 5) ? 'low' : 'ok';
               
@@ -832,6 +847,38 @@ const Inventory: React.FC = () => {
             })}
           </tbody>
         </table>
+        
+        {filteredProducts.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-slate-50 border-t border-slate-100">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Affichage { (currentPage - 1) * itemsPerPage + 1 } à { Math.min(currentPage * itemsPerPage, filteredProducts.length) } sur { filteredProducts.length } produits
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                className="text-xs uppercase font-black tracking-wider"
+              >
+                Précédent
+              </Button>
+              <span className="text-xs font-black text-slate-700 px-3 py-1 bg-white border border-slate-200 rounded-lg">
+                Page {currentPage} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                className="text-xs uppercase font-black tracking-wider"
+              >
+                Suivant
+              </Button>
+            </div>
+          </div>
+        )}
+
         {filteredProducts.length === 0 && (
           <div className="py-24 text-center">
              <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-3xl flex items-center justify-center mx-auto mb-6">

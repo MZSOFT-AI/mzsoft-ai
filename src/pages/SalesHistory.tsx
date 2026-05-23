@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -39,6 +39,9 @@ export default function SalesHistory() {
   const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
   const [saleToDelete, setSaleToDelete] = useState<any | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [currentGroupPage, setCurrentGroupPage] = useState(1);
+  const groupsPerPage = 5;
 
   const handleDeleteSale = (sale: any) => {
     setSaleToDelete(sale);
@@ -57,16 +60,20 @@ export default function SalesHistory() {
     }
   };
 
-  const handleBulkDeleteSales = async () => {
+  const handleBulkDeleteSales = () => {
     if (selectedSaleIds.length === 0) return;
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedSaleIds.length} documents / ventes de l'historique ? Cette action est irréversible.`)) {
-      try {
-        await Promise.all(selectedSaleIds.map(id => deleteDoc(doc(db, 'sales', id))));
-        showToast(`${selectedSaleIds.length} documents / ventes supprimés`, "success");
-        setSelectedSaleIds([]);
-      } catch (err: any) {
-        showToast("Erreur lors de la suppression groupée de ventes", "error");
-      }
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const confirmBulkDeleteSales = async () => {
+    try {
+      await Promise.all(selectedSaleIds.map(id => deleteDoc(doc(db, 'sales', id))));
+      showToast(`${selectedSaleIds.length} documents / ventes supprimés`, "success");
+      setSelectedSaleIds([]);
+    } catch (err: any) {
+      showToast("Erreur lors de la suppression groupée de ventes", "error");
+    } finally {
+      setIsBulkDeleteModalOpen(false);
     }
   };
 
@@ -499,6 +506,17 @@ export default function SalesHistory() {
     return dateB.getTime() - dateA.getTime();
   });
 
+  // Reset page when switching filters
+  useEffect(() => {
+    setCurrentGroupPage(1);
+  }, [groupBy, startDate, endDate, sourceFilter, userFilter, sessionFilter, searchQuery]);
+
+  const totalGroupPages = Math.ceil(sortedKeys.length / groupsPerPage) || 1;
+
+  const paginatedGroupKeys = useMemo(() => {
+    return sortedKeys.slice((currentGroupPage - 1) * groupsPerPage, currentGroupPage * groupsPerPage);
+  }, [sortedKeys, currentGroupPage]);
+
   // Initialize first group as expanded if there are sales
   useEffect(() => {
     if (sortedKeys.length > 0 && expandedGroups.length === 0) {
@@ -810,7 +828,7 @@ export default function SalesHistory() {
 
       {/* Grouped View */}
       <div className="space-y-6">
-        {sortedKeys.map((groupKey) => {
+        {paginatedGroupKeys.map((groupKey) => {
           const groupData = groupedData[groupKey];
           const isExpanded = expandedGroups.includes(groupKey);
 
@@ -974,6 +992,37 @@ export default function SalesHistory() {
           );
         })}
 
+        {sortedKeys.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white border border-slate-200">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Affichage { (currentGroupPage - 1) * groupsPerPage + 1 } à { Math.min(currentGroupPage * groupsPerPage, sortedKeys.length) } sur { sortedKeys.length } périodes/sessions filtrées
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentGroupPage === 1}
+                onClick={() => setCurrentGroupPage(prev => Math.max(prev - 1, 1))}
+                className="text-xs uppercase font-black tracking-wider"
+              >
+                Précédent
+              </Button>
+              <span className="text-xs font-black text-slate-700 px-3 py-1 bg-white border border-slate-200 rounded-lg">
+                Page {currentGroupPage} / {totalGroupPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentGroupPage === totalGroupPages}
+                onClick={() => setCurrentGroupPage(prev => Math.min(prev + 1, totalGroupPages))}
+                className="text-xs uppercase font-black tracking-wider"
+              >
+                Suivant
+              </Button>
+            </div>
+          </div>
+        )}
+
         {sortedKeys.length === 0 && (
           <div className="bg-white border border-slate-200 p-20 text-center flex flex-col items-center gap-4">
              <div className="bg-slate-50 p-6 rounded-full">
@@ -1135,6 +1184,16 @@ export default function SalesHistory() {
         onConfirm={confirmDeleteSale}
         title="Supprimer la Vente"
         message={`Êtes-vous sûr de vouloir supprimer définitivement cette vente de l'historique ? Cette action est irréversible.`}
+        confirmText="Supprimer"
+        variant="danger"
+      />
+
+      <ConfirmationModal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        onConfirm={confirmBulkDeleteSales}
+        title="Suppression Groupée"
+        message={`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedSaleIds.length} documents / ventes de l'historique ? Cette action est irréversible.`}
         confirmText="Supprimer"
         variant="danger"
       />

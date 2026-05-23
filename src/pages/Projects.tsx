@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { Project, Customer, Sale, Quote, Invoice, Employee, Product, ProjectPayment } from '../types';
@@ -35,6 +35,7 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Modal from '../components/ui/Modal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { toast } from 'react-hot-toast';
 import { cn, formatCurrency } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
@@ -53,6 +54,7 @@ const Projects: React.FC = () => {
   const [employeePayments, setEmployeePayments] = useState<ProjectPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -101,43 +103,36 @@ const Projects: React.FC = () => {
       setLoading(false);
     });
 
-    const unsubCustomers = onSnapshot(collection(db, 'customers'), (snap) => {
+    getDocs(collection(db, 'customers')).then((snap) => {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer)));
-    });
+    }).catch(err => console.error("Error fetching customers: ", err));
 
-    const unsubSales = onSnapshot(collection(db, 'sales'), (snap) => {
+    getDocs(collection(db, 'sales')).then((snap) => {
       setSales(snap.docs.map(d => ({ id: d.id, ...d.data() } as Sale)));
-    });
+    }).catch(err => console.error("Error fetching sales: ", err));
 
-    const unsubQuotes = onSnapshot(collection(db, 'quotes'), (snap) => {
+    getDocs(collection(db, 'quotes')).then((snap) => {
       setQuotes(snap.docs.map(d => ({ id: d.id, ...d.data() } as Quote)));
-    });
+    }).catch(err => console.error("Error fetching quotes: ", err));
 
-    const unsubInvoices = onSnapshot(collection(db, 'invoices'), (snap) => {
+    getDocs(collection(db, 'invoices')).then((snap) => {
       setInvoices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Invoice)));
-    });
+    }).catch(err => console.error("Error fetching invoices: ", err));
 
-    const unsubEmployees = onSnapshot(collection(db, 'employees'), (snap) => {
+    getDocs(collection(db, 'employees')).then((snap) => {
       setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() } as Employee)));
-    });
+    }).catch(err => console.error("Error fetching employees: ", err));
 
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => {
+    getDocs(collection(db, 'products')).then((snap) => {
       setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
-    });
+    }).catch(err => console.error("Error fetching products: ", err));
 
-    const unsubPayments = onSnapshot(collection(db, 'employeePayments'), (snap) => {
+    getDocs(collection(db, 'employeePayments')).then((snap) => {
       setEmployeePayments(snap.docs.map(d => ({ id: d.id, ...d.data() } as ProjectPayment)));
-    });
+    }).catch(err => console.error("Error fetching employeePayments: ", err));
 
     return () => {
       unsubProjects();
-      unsubCustomers();
-      unsubSales();
-      unsubQuotes();
-      unsubInvoices();
-      unsubEmployees();
-      unsubProducts();
-      unsubPayments();
     };
   }, []);
 
@@ -342,16 +337,8 @@ const Projects: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Supprimer ce chantier ?')) return;
-    try {
-      await deleteDoc(doc(db, 'projects', id));
-      toast.success('Chantier supprimé');
-      if (activeTrackingProjectId === id) {
-        setActiveTrackingProjectId(null);
-      }
-    } catch (error) {
-      toast.error('Erreur de suppression');
-    }
+    setProjectToDelete(id);
+    setIsModalOpen(false);
   };
 
   const getStatusColor = (status: Project['status']) => {
@@ -1689,6 +1676,29 @@ const Projects: React.FC = () => {
             </div>
         </form>
       </Modal>
+
+      <ConfirmationModal
+        isOpen={projectToDelete !== null}
+        onClose={() => setProjectToDelete(null)}
+        onConfirm={async () => {
+          if (!projectToDelete) return;
+          try {
+            await deleteDoc(doc(db, 'projects', projectToDelete));
+            toast.success('Chantier supprimé');
+            if (activeTrackingProjectId === projectToDelete) {
+              setActiveTrackingProjectId(null);
+            }
+          } catch (error) {
+            toast.error('Erreur de suppression');
+          } finally {
+            setProjectToDelete(null);
+          }
+        }}
+        title="Confirmation de Suppression"
+        message="Voulez-vous vraiment supprimer ce chantier ? Cette action est irréversible."
+        confirmText="Supprimer"
+        variant="danger"
+      />
     </div>
   );
 };

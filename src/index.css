@@ -15,6 +15,14 @@
   --astra-border: #e2e8f0;
 }
 
+:root.dark, .dark {
+  --background: #0b0f19;
+  --foreground: #f1f5f9;
+  --astra-blue: #0274be;
+  --astra-dark: #0b0f19;
+  --astra-border: #1e293b;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
@@ -24,20 +32,20 @@ body {
 
 @layer components {
   .mzsoft-card {
-    @apply bg-white border border-slate-200/80 shadow-xs rounded-xl;
+    @apply bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 shadow-xs rounded-xl transition-all duration-200;
   }
   .mzsoft-table {
     @apply w-full text-left text-sm border-collapse;
   }
   .mzsoft-table th {
-    @apply bg-slate-50 p-3.5 border border-slate-200/80 font-extrabold uppercase text-[10px] tracking-wider text-slate-500;
+    @apply bg-slate-50 dark:bg-[#1f2937] p-3.5 border border-slate-200/80 dark:border-slate-800 font-extrabold uppercase text-[10px] tracking-wider text-slate-500 dark:text-slate-400;
   }
   .mzsoft-table td {
-    @apply p-3.5 border border-slate-200/80 bg-white text-slate-700 font-medium;
+    @apply p-3.5 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] text-slate-700 dark:text-slate-300 font-medium;
   }
 }
 
-/* Custom modern WordPress scrollbar */
+/* Custom modern scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -47,11 +55,85 @@ body {
   background: #f1f5f9;
 }
 
+.dark ::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 9999px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #0274be;
+}
+
+/* Astra ERP Dark Theme System-wide Overrides */
+.dark body {
+  background-color: #0b0f19;
+  color: #f1f5f9;
+}
+
+.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+.dark .bg-slate-50 {
+  background-color: #0b0f19 !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1f2937 !important;
+}
+
+.dark .border-slate-200,
+.dark .border-slate-150,
+.dark .border-slate-100 {
+  border-color: #1e293b !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+  border-color: #1e293b !important;
+}
+
+.dark input::placeholder,
+.dark select::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Modals and Dialogs overlays */
+.dark .bg-white\/80 {
+  background-color: rgba(17, 24, 39, 0.8) !important;
+}
+
+.dark .bg-white\/90 {
+  background-color: rgba(17, 24, 39, 0.9) !important;
+}
+
+.dark .hover\:bg-slate-50:hover, 
+.dark .hover\:bg-slate-100:hover {
+  background-color: #1e293b !important;
 }

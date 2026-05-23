@@ -4,6 +4,7 @@ import { db } from '../firebase/config';
 import { dbService } from '../firebase/db';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import Modal from './ui/Modal';
+import ConfirmationModal from './ui/ConfirmationModal';
 import { Button } from './ui/Button';
 import { Trash2, Plus, Tag } from 'lucide-react';
 
@@ -19,6 +20,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose }) => {
   const [categories, setCategories] = useState<any[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,14 +56,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleDeleteCategory = async (id: string) => {
-    if (!window.confirm('Supprimer cette catégorie ? Cela n\'affectera pas les produits déjà créés.')) return;
-
-    try {
-      await dbService.deleteDocument('categories', id);
-      showToast('Catégorie supprimée', 'success');
-    } catch (error) {
-      showToast('Erreur lors de la suppression', 'error');
-    }
+    setCategoryToDelete(id);
   };
 
   return (
@@ -103,6 +98,26 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose }) => {
           )}
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={categoryToDelete !== null}
+        onClose={() => setCategoryToDelete(null)}
+        onConfirm={async () => {
+          if (!categoryToDelete) return;
+          try {
+            await dbService.deleteDocument('categories', categoryToDelete);
+            showToast('Catégorie supprimée', 'success');
+          } catch (error) {
+            showToast('Erreur lors de la suppression', 'error');
+          } finally {
+            setCategoryToDelete(null);
+          }
+        }}
+        title="Confirmation de Suppression"
+        message="Supprimer cette catégorie ? Cela n'affectera pas les produits déjà créés."
+        confirmText="Supprimer"
+        variant="danger"
+      />
     </Modal>
   );
 };

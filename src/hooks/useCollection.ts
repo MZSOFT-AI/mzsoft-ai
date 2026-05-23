@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
   onSnapshot, 
@@ -10,6 +10,39 @@ import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { safeStringify } from '../lib/utils';
 
+// Helper to serialize query constraints safely into a stable string key
+function getConstraintsKey(constraints: any[]): string {
+  try {
+    return constraints.map(c => {
+      if (!c) return '';
+      if (typeof c === 'object') {
+        const type = c.type || c.constraintType || c.constructor?.name || '';
+        const obj: any = { type };
+        
+        // Safely extract primitive properties to detect physical shifts in filters/order
+        for (const k of Object.keys(c)) {
+          const val = c[k];
+          if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+            obj[k] = val;
+          } else if (val && typeof val === 'object') {
+            if (typeof val.toMillis === 'function') {
+              obj[k] = val.toMillis();
+            } else if (val.segments && Array.isArray(val.segments)) {
+              obj[k] = val.segments.join('.');
+            } else if (typeof val.toString === 'function' && k === 'op') {
+              obj[k] = val.toString();
+            }
+          }
+        }
+        return JSON.stringify(obj);
+      }
+      return String(c);
+    }).join('|');
+  } catch (e) {
+    return String(constraints.length);
+  }
+}
+
 export function useCollection<T = DocumentData>(
   collectionName: string, 
   queryConstraints: QueryConstraint[] = []
@@ -19,8 +52,13 @@ export function useCollection<T = DocumentData>(
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Derive stable constraints serialization key
+  const constraintsKey = useMemo(() => getConstraintsKey(queryConstraints), [queryConstraints]);
+
   useEffect(() => {
     let isMounted = true;
+    
+    // Initialize query
     const q = query(collection(db, collectionName), ...queryConstraints);
     
     const unsubscribe = onSnapshot(
@@ -65,7 +103,7 @@ export function useCollection<T = DocumentData>(
       isMounted = false;
       unsubscribe();
     };
-  }, [collectionName]);
+  }, [collectionName, constraintsKey]);
 
   return { data: data || [], loading, isInitialLoad, error };
 }

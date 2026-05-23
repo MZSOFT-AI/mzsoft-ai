@@ -1340,19 +1340,7 @@ const POS: React.FC = () => {
                                <RefreshCw size={14} />
                             </button>
                             <button 
-                              onClick={async () => {
-                                if(window.confirm("Supprimer cette mise en instance ?")) {
-                                  try {
-                                    setIsDeletingPending(pending.id);
-                                    await dbService.deleteDocument('pending_sales', pending.id);
-                                    showToast("Mise en instance supprimée", "success");
-                                  } catch (error) {
-                                    showToast("Erreur lors de la suppression", "error");
-                                  } finally {
-                                    setIsDeletingPending(null);
-                                  }
-                                }
-                              }}
+                              onClick={() => setPendingToDelete(pending)}
                               disabled={isDeletingPending === pending.id}
                               className={cn(
                                 "ml-1 p-1 transition-colors",
