@@ -47,16 +47,33 @@ const UserManagement: React.FC = () => {
   const [isInviting, setIsInviting] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   
-  const [permissions, setPermissions] = useState<UserData['permissions']>({
-    canManageStock: false,
+  const INITIAL_PERMISSIONS: UserPermissions = {
+    canViewDashboard: true,
+    canViewProducts: true,
+    canAddProducts: false,
+    canEditProducts: false,
     canDeleteProducts: false,
-    canSell: true,
-    canProcessReturns: false,
+    canManageCategories: false,
+    canManageStock: false,
     canPerformInventory: false,
+    canManageSales: false,
+    canProcessReturns: false,
+    canManageCustomers: false,
+    canManageSuppliers: false,
+    canManageAccounting: false,
     canManageExpenses: false,
     canViewReports: false,
-    canManageUsers: false
-  });
+    canExportData: false,
+    canPrint: false,
+    canManageUsers: false,
+    canManagePermissions: false,
+    canManageSettings: false,
+    canManageBackups: false,
+    canViewLogs: false,
+    canSell: true
+  };
+
+  const [permissions, setPermissions] = useState<UserPermissions>(INITIAL_PERMISSIONS);
 
   const { showToast } = useNotification();
 
@@ -138,16 +155,7 @@ const UserManagement: React.FC = () => {
     setInviteUsername('');
     setInvitePassword('');
     setInviteRole('vendeur');
-    setPermissions({
-      canManageStock: false,
-      canDeleteProducts: false,
-      canSell: true,
-      canProcessReturns: false,
-      canPerformInventory: false,
-      canManageExpenses: false,
-      canViewReports: false,
-      canManageUsers: false
-    });
+    setPermissions(INITIAL_PERMISSIONS);
     setShowInviteForm(false);
     setEditingUser(null);
   };
@@ -196,34 +204,18 @@ const UserManagement: React.FC = () => {
     setInviteEmail(user.email || '');
     setInviteUsername(user.username || '');
     setInviteRole(user.role as any);
-    setPermissions(user.permissions || {
-      canManageStock: user.role === 'admin' || user.role === 'manager',
-      canDeleteProducts: true,
-      canSell: true,
-      canProcessReturns: user.role === 'admin' || user.role === 'manager',
-      canPerformInventory: user.role === 'admin' || user.role === 'manager',
-      canManageExpenses: user.role === 'admin' || user.role === 'manager',
-      canViewReports: user.role === 'admin' || user.role === 'manager',
-      canManageUsers: user.role === 'admin'
+    setPermissions({
+      ...INITIAL_PERMISSIONS,
+      ...(user.permissions || {})
     });
     setShowInviteForm(true);
   };
 
   const togglePermission = (key: keyof UserPermissions) => {
-    setPermissions(prev => prev ? ({
+    setPermissions(prev => ({
       ...prev,
       [key]: !prev[key]
-    }) : {
-      canManageStock: false,
-      canDeleteProducts: true,
-      canSell: true,
-      canProcessReturns: false,
-      canPerformInventory: false,
-      canManageExpenses: false,
-      canViewReports: false,
-      canManageUsers: false,
-      [key]: true
-    });
+    }));
   };
 
   const handleUpdateRole = async (userId: string, newRole: 'admin' | 'vendeur' | 'manager') => {

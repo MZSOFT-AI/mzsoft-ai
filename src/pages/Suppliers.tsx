@@ -8,16 +8,20 @@ import { Plus, Search, Phone, Mail, User, Edit2, Trash2, Truck, UserCheck } from
 import { useForm } from 'react-hook-form';
 import Modal from '../components/ui/Modal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
+import { useAuth } from '../context/AuthContext';
 
 import { useNotification } from '../context/NotificationContext';
 
 export default function Suppliers() {
   const { showToast } = useNotification();
+  const { hasPermission } = useAuth();
+  const canDelete = hasPermission('canDeleteProducts');
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [supplierToDelete, setSupplierToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { register, handleSubmit, reset } = useForm();
 
   useEffect(() => {
@@ -130,9 +134,11 @@ export default function Suppliers() {
                     <button onClick={() => handleEdit(supplier)} className="p-1.5 text-slate-400 hover:text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50">
                       <Edit2 size={14} />
                     </button>
-                    <button onClick={() => handleDelete(supplier.id)} className="p-1.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50">
-                      <Trash2 size={14} />
-                    </button>
+                    {canDelete && (
+                      <button onClick={() => handleDelete(supplier.id)} className="p-1.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -185,11 +191,13 @@ export default function Suppliers() {
         onConfirm={async () => {
           if (!supplierToDelete) return;
           try {
+            setIsDeleting(true);
             await dbService.deleteDocument('suppliers', supplierToDelete);
             showToast('Fournisseur supprimé', 'success');
           } catch (error) {
             showToast('Erreur lors de la suppression', 'error');
           } finally {
+            setIsDeleting(false);
             setSupplierToDelete(null);
           }
         }}
@@ -197,6 +205,7 @@ export default function Suppliers() {
         message="Voulez-vous vraiment supprimer ce fournisseur ? Cette action est irréversible."
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
     </div>
   );

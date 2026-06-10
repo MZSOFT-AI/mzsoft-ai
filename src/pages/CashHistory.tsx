@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { format, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, getSafeDate } from '../lib/utils';
 import { Button } from '../components/ui/Button';
 import { useNavigate } from 'react-router-dom';
 import DailyClosingModal from '../components/DailyClosingModal';
@@ -156,7 +156,7 @@ const CashHistory: React.FC = () => {
 
     // Process Sales
     sales.forEach(sale => {
-      const date = typeof sale.createdAt?.toDate === 'function' ? sale.createdAt.toDate() : new Date(sale.createdAt || Date.now());
+      const date = getSafeDate(sale.createdAt);
       const dateKey = format(date, 'yyyy-MM-dd');
 
       if (!dailySummaries[dateKey]) {
@@ -187,7 +187,7 @@ const CashHistory: React.FC = () => {
 
     // Process Expenses
     expenses.forEach(exp => {
-      const date = typeof exp.createdAt?.toDate === 'function' ? exp.createdAt.toDate() : new Date(exp.createdAt || Date.now());
+      const date = getSafeDate(exp.createdAt);
       const dateKey = format(date, 'yyyy-MM-dd');
 
       if (!dailySummaries[dateKey]) {
@@ -216,7 +216,7 @@ const CashHistory: React.FC = () => {
         if (dayClosings.length > 0) {
           return dayClosings.map(closing => ({
             ...s,
-            date: closing.startTime?.toDate ? closing.startTime.toDate() : s.date,
+            date: getSafeDate(closing.startTime || s.date),
             startingCash: closing.startingCash || 0,
             cashSales: closing.cashSales || 0,
             transferSales: closing.transferSales || 0,
@@ -269,15 +269,15 @@ const CashHistory: React.FC = () => {
     
     if (activeSession) {
       // Aggregate data from session start time
-      const sessionStart = typeof activeSession.startTime?.toDate === 'function' ? activeSession.startTime.toDate() : new Date(activeSession.startTime || Date.now());
+      const sessionStart = getSafeDate(activeSession.startTime);
       
       const sessionSales = sales.filter(s => {
-        const date = typeof s.createdAt?.toDate === 'function' ? s.createdAt.toDate() : new Date(s.createdAt || Date.now());
+        const date = getSafeDate(s.createdAt);
         return s.userId === activeSession.userId && date >= sessionStart && s.status !== 'refunded';
       });
 
       const sessionExpenses = expenses.filter(e => {
-        const date = typeof e.createdAt?.toDate === 'function' ? e.createdAt.toDate() : new Date(e.createdAt || Date.now());
+        const date = getSafeDate(e.createdAt);
         return e.userId === activeSession.userId && date >= sessionStart;
       });
 

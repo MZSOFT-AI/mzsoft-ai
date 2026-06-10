@@ -39,6 +39,7 @@ const Notifications = React.lazy(() => import('./pages/Notifications'));
 const Accounting = React.lazy(() => import('./pages/Accounting'));
 
 import ProtectedRoute from './components/ProtectedRoute';
+import PermissionGuard from './components/PermissionGuard';
 
 const LoadingFallback = () => (
   <div className="flex-1 flex flex-col items-center justify-center min-h-screen bg-slate-50">
@@ -81,27 +82,27 @@ export default function App() {
                             <Layout />
                           </ProtectedRoute>
                         }>
-                          <Route index element={<Dashboard />} />
-                          <Route path="pos" element={<POS />} />
-                          <Route path="inventory" element={<Inventory />} />
-                          <Route path="inventory/audits" element={<InventoryAudits />} />
-                          <Route path="inventory/audits/:id" element={<InventoryAuditDetails />} />
-                          <Route path="stock-movements" element={<StockMovements />} />
-                          <Route path="categories" element={<Categories />} />
-                          <Route path="sales-history" element={<SalesHistory />} />
-                          <Route path="customers" element={<Customers />} />
-                          <Route path="suppliers" element={<Suppliers />} />
-                          <Route path="expenses" element={<Expenses />} />
-                          <Route path="accounting" element={<Accounting />} />
-                          <Route path="cash-history" element={<CashHistory />} />
-                          <Route path="reports" element={<Reports />} />
-                          <Route path="users" element={<Users />} />
-                          <Route path="quotes" element={<Quotes />} />
-                          <Route path="invoices" element={<Invoices />} />
-                          <Route path="projects" element={<Projects />} />
-                          <Route path="employees" element={<Employees />} />
+                           <Route index element={<PermissionGuard permission="canViewDashboard"><Dashboard /></PermissionGuard>} />
+                          <Route path="pos" element={<PermissionGuard permission="canManageSales"><POS /></PermissionGuard>} />
+                          <Route path="inventory" element={<PermissionGuard permission="canViewProducts"><Inventory /></PermissionGuard>} />
+                          <Route path="inventory/audits" element={<PermissionGuard permission="canPerformInventory"><InventoryAudits /></PermissionGuard>} />
+                          <Route path="inventory/audits/:id" element={<PermissionGuard permission="canPerformInventory"><InventoryAuditDetails /></PermissionGuard>} />
+                          <Route path="stock-movements" element={<PermissionGuard permission="canManageStock"><StockMovements /></PermissionGuard>} />
+                          <Route path="categories" element={<PermissionGuard permission="canManageCategories"><Categories /></PermissionGuard>} />
+                          <Route path="sales-history" element={<PermissionGuard permission="canManageSales"><SalesHistory /></PermissionGuard>} />
+                          <Route path="customers" element={<PermissionGuard permission="canManageCustomers"><Customers /></PermissionGuard>} />
+                          <Route path="suppliers" element={<PermissionGuard permission="canManageSuppliers"><Suppliers /></PermissionGuard>} />
+                          <Route path="expenses" element={<PermissionGuard permission="canManageExpenses"><Expenses /></PermissionGuard>} />
+                          <Route path="accounting" element={<PermissionGuard permission="canManageAccounting"><Accounting /></PermissionGuard>} />
+                          <Route path="cash-history" element={<PermissionGuard permission="canManageAccounting"><CashHistory /></PermissionGuard>} />
+                          <Route path="reports" element={<PermissionGuard permission="canViewReports"><Reports /></PermissionGuard>} />
+                          <Route path="users" element={<PermissionGuard permission="canManageUsers"><Users /></PermissionGuard>} />
+                          <Route path="quotes" element={<PermissionGuard permission="canManageSales"><Quotes /></PermissionGuard>} />
+                          <Route path="invoices" element={<PermissionGuard permission="canManageAccounting"><Invoices /></PermissionGuard>} />
+                          <Route path="projects" element={<PermissionGuard permission="canManageSales"><Projects /></PermissionGuard>} />
+                          <Route path="employees" element={<PermissionGuard permission="canManageUsers"><Employees /></PermissionGuard>} />
                           <Route path="notifications" element={<Notifications />} />
-                          <Route path="settings" element={<Settings />} />
+                          <Route path="settings" element={<PermissionGuard permission="canManageSettings"><Settings /></PermissionGuard>} />
                         </Route>
 
                         <Route path="*" element={<Navigate to="/" replace />} />

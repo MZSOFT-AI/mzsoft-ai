@@ -33,7 +33,7 @@ import {
   Ban,
   Printer
 } from 'lucide-react';
-import { formatCurrency, cn, cleanObject } from '../lib/utils';
+import { formatCurrency, cn, cleanObject, getSafeDate } from '../lib/utils';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { notificationService } from '../services/notificationService';
@@ -54,6 +54,7 @@ const Invoices: React.FC = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -510,11 +511,14 @@ const Invoices: React.FC = () => {
   const handleDelete = async () => {
     if (!selectedInvoice) return;
     try {
+      setIsDeleting(true);
       await dbService.deleteDocument('invoices', selectedInvoice.id);
       showToast("Facture supprimée", "success");
       setIsDeleteModalOpen(false);
-    } catch (err) {
-      showToast("Erreur lors de la suppression", "error");
+    } catch (err: any) {
+      showToast(`Erreur lors de la suppression: ${err.message || 'Permissions insuffisantes'}`, "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -672,8 +676,8 @@ const Invoices: React.FC = () => {
                         />
                       </td>
                       <td className="p-4 font-black text-slate-900">{invoice.invoiceNumber}</td>
-                      <td className="p-4 text-slate-450 font-medium">
-                        {invoice.createdAt ? format(new Date((invoice.createdAt as any).toDate ? (invoice.createdAt as any).toDate() : (invoice.createdAt instanceof Date ? invoice.createdAt : new Date())), 'dd/MM/yyyy') : '-'}
+                      <td className="p-4 text-slate-455 font-medium">
+                        {invoice.createdAt ? format(getSafeDate(invoice.createdAt), 'dd/MM/yyyy') : '-'}
                       </td>
                       <td className="p-4 truncate max-w-[200px] uppercase">{invoice.customerName || 'Client anonyme'}</td>
                       <td className="p-4 text-right font-black text-slate-900 font-mono">{formatCurrency(invoice.totalAmount)}</td>
@@ -1109,7 +1113,7 @@ const Invoices: React.FC = () => {
                <div className="text-right">
                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Date</p>
                   <p className="text-sm font-bold text-slate-600">
-                    {selectedInvoice.createdAt ? format(new Date((selectedInvoice.createdAt as any).toDate ? (selectedInvoice.createdAt as any).toDate() : selectedInvoice.createdAt), 'dd/MM/yyyy HH:mm') : '-'}
+                    {selectedInvoice.createdAt ? format(getSafeDate(selectedInvoice.createdAt), 'dd/MM/yyyy HH:mm') : '-'}
                   </p>
                </div>
             </div>
@@ -1148,7 +1152,7 @@ const Invoices: React.FC = () => {
                  <div className="space-y-2">
                     {selectedInvoice.paymentHistory && selectedInvoice.paymentHistory.map((p, i) => (
                       <div key={i} className="flex justify-between items-center text-xs p-2 bg-white rounded-lg border border-slate-100">
-                        <span className="text-slate-500 font-medium">#{i+1} - {p.date ? format(new Date((p.date as any).toDate ? (p.date as any).toDate() : p.date), 'dd/MM/yyyy') : '-'}</span>
+                        <span className="text-slate-500 font-medium">#{i+1} - {p.date ? format(getSafeDate(p.date), 'dd/MM/yyyy') : '-'}</span>
                         <span className="font-bold text-slate-700">{p.method}</span>
                         <span className="font-black text-blue-600">{formatCurrency(p.amount)}</span>
                       </div>
@@ -1304,6 +1308,7 @@ const Invoices: React.FC = () => {
         message="Êtes-vous sûr de vouloir supprimer cette facture ? Cela n'annulera pas les mouvements de stock déjà effectués."
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
 
       <ConfirmationModal
@@ -1314,6 +1319,7 @@ const Invoices: React.FC = () => {
         message={`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedInvoiceIds.length} factures sélectionnées ? Cette action est irréversible.`}
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isSaving}
       />
     </div>
   );

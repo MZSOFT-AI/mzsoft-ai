@@ -156,6 +156,7 @@ const Employees: React.FC = () => {
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: 'employees' | 'leaves' | 'payments' | 'attendance' | 'documents'; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Forms state
   const [employeeForm, setEmployeeForm] = useState({
@@ -353,6 +354,25 @@ const Employees: React.FC = () => {
     return Object.keys(counts).map(key => ({ name: key, value: counts[key] }));
   };
 
+  const toggleEmployeeStatusConfirm = async (emp: any) => {
+    const nextAct = !emp.isActive;
+    const actionTerm = nextAct ? 'ACTIVER' : 'SUSPENDRE';
+    if (!window.confirm(`Voulez-vous vraiment ${actionTerm} le collaborateur ${emp.name} ?`)) {
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'employees', emp.id), {
+        isActive: nextAct,
+        status: nextAct ? 'active' : 'suspended',
+        updatedAt: serverTimestamp()
+      });
+      toast.success(`Le statut de ${emp.name} a été modifié avec succès.`);
+    } catch (error) {
+      toast.error('Erreur lors du changement de statut');
+    }
+  };
+
   const COLORS = ['#0274be', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'];
 
   // Add or Edit Employee Submit handler
@@ -454,6 +474,7 @@ const Employees: React.FC = () => {
     if (!deleteTarget) return;
 
     try {
+      setIsDeleting(true);
       const { id, type, name } = deleteTarget;
       
       if (type === 'employees') {
@@ -498,6 +519,8 @@ const Employees: React.FC = () => {
       setDeleteTarget(null);
     } catch (e) {
       toast.error('Erreur lors du traitement de la suppression');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -508,6 +531,10 @@ const Employees: React.FC = () => {
 
     try {
       const emp = employees.find(e => e.id === attendanceForm.employeeId);
+      
+      if (!window.confirm(`Voulez-vous vraiment enregistrer cette ligne d'émargement de présence pour ${emp?.name || 'le collaborateur'} ?`)) {
+        return;
+      }
       
       // Calculate working stats
       const [inH, inM] = attendanceForm.checkIn.split(':').map(Number);
@@ -571,6 +598,11 @@ const Employees: React.FC = () => {
   const handleQuickClockIn = async (emp: any) => {
     const today = format(new Date(), 'yyyy-MM-dd');
     const existing = attendance.find(a => a.employeeId === emp.id && a.date === today);
+    const actionLabel = existing ? 'enregistrer le départ de l\'après-midi' : "valider l'arrivée du matin";
+
+    if (!window.confirm(`Voulez-vous vraiment ${actionLabel} pour le collaborateur ${emp.name} aujourd'hui ?`)) {
+      return;
+    }
 
     if (existing) {
       if (existing.checkOut) {
@@ -636,6 +668,10 @@ const Employees: React.FC = () => {
       const emp = employees.find(e => e.id === leaveForm.employeeId);
       const days = differenceInDays(new Date(leaveForm.endDate), new Date(leaveForm.startDate)) + 1;
 
+      if (!window.confirm(`Voulez-vous vraiment soumettre une demande de congé pour ${emp?.name || 'le collaborateur'} ?`)) {
+        return;
+      }
+
       if (days <= 0) return toast.error("La date de départ doit précéder la date de fin");
 
       await addDoc(collection(db, 'employeeLeaves'), {
@@ -668,13 +704,20 @@ const Employees: React.FC = () => {
   };
 
   const updateLeaveStatus = async (leaveId: string, status: 'approved' | 'rejected', comment?: string) => {
+    const targetLeave = leaves.find(l => l.id === leaveId);
+    if (!targetLeave) return;
+
+    const actionText = status === 'approved' ? 'APPROUVER' : 'REFUSER';
+    if (!window.confirm(`Voulez-vous vraiment ${actionText} la demande de congé de : ${targetLeave.employeeName} ?`)) {
+      return;
+    }
+
     try {
-      const targetLeave = leaves.find(l => l.id === leaveId);
       await updateDoc(doc(db, 'employeeLeaves', leaveId), {
         status,
         comments: comment || `Décision prise le ${format(new Date(), 'dd/MM/yyyy')}`
       });
-      await saveAuditLog('MODIFICATION', 'leaves', `Demande de congé de ${targetLeave?.employeeName} ${status === 'approved' ? 'acceptée' : 'refusée'}`);
+      await saveAuditLog('MODIFICATION', 'leaves', `Demande de congé de ${targetLeave.employeeName} ${status === 'approved' ? 'acceptée' : 'refusée'}`);
       toast.success(`Le congé a été ${status === 'approved' ? 'approuvé' : 'refusé'} avec succès`);
     } catch (e) {
       toast.error("Impossible de mettre à jour le statut");
@@ -754,6 +797,10 @@ const Employees: React.FC = () => {
       const allow = Number(salaryForm.allowances) || 0;
       const deduct = Number(salaryForm.deductions) || 0;
       const netCalculated = base + bonus + allow - deduct;
+
+      if (!window.confirm(`Voulez-vous vraiment enregistrer et valider le virement/paiement de salaire pour ${emp?.name || 'le collaborateur'} d'un montant net de ${formatCurrency(netCalculated)} DA ?`)) {
+        return;
+      }
 
       // Assign to project if selected, else general paie administration
       let projId = 'OFFICE-MAIN';
@@ -1505,89 +1552,123 @@ const Employees: React.FC = () => {
                 </div>
               </div>
 
-              {/* Grid block of employees */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredEmployeesList.map(emp => (
-                  <div key={emp.id} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col justify-between group relative">
-                    <div className="absolute top-4 right-4 flex gap-1.5">
-                      <Badge className={cn(
-                        "text-[8px] font-black px-2 py-0.5",
-                        emp.isActive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                      )}>
-                        {emp.isActive ? 'ACTIF' : 'INACTIF'}
-                      </Badge>
-                      <Badge className="bg-slate-50 border border-slate-200 text-slate-500 font-extrabold text-[8px]">{emp.contractType}</Badge>
-                    </div>
-
-                    <div>
-                      {/* Avatar & Identifiers */}
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 bg-slate-100 rounded-2xl border border-slate-200/60 overflow-hidden flex items-center justify-center text-slate-500 font-black shrink-0 relative">
-                          {emp.photoBase64 ? (
-                            <img src={emp.photoBase64} alt="Profil" className="w-full h-full object-cover" loading="lazy" />
-                          ) : (
-                            emp.name?.charAt(0)
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="text-sm font-black text-slate-800 uppercase truncate leading-tight">{emp.name}</h3>
-                          <span className="text-[10px] font-black text-[#0274be] block mt-0.5">{emp.role}</span>
-                          <span className="text-[8.5px] font-black text-slate-400 block tracking-wider mt-0.5">{emp.matricule}</span>
-                        </div>
-                      </div>
-
-                      {/* Professional specs */}
-                      <div className="space-y-2 text-[11px] font-bold text-slate-600 uppercase pt-2 border-t border-slate-100 mb-6">
-                        <div className="flex justify-between">
-                          <span>Téléphone</span>
-                          <span className="text-slate-700">{emp.phone || '-'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Département</span>
-                          <span className="text-slate-700">{emp.department}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Héritage Rémunération</span>
-                          <span className="text-[#0274be] font-black">{formatCurrency(emp.baseSalary || emp.rate)} DA</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Operational Actions */}
-                    <div className="flex gap-2 border-t border-slate-100 pt-3 mt-auto">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setProfileViewEmp(emp)} 
-                        className="flex-1 h-9 rounded-xl text-[9px] font-black uppercase text-slate-600 hover:text-[#0274be]"
-                      >
-                        <Eye size={12} className="mr-1" /> Profil complet
-                      </Button>
-                      {isRH && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleEditEmployeeClick(emp)} 
-                          className="h-9 w-9 rounded-xl border-slate-200 hover:border-[#0274be] hover:bg-slate-50 text-slate-600"
-                        >
-                          <Edit2 size={12} />
-                        </Button>
-                      )}
-                      {isRH && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => requestDelete(emp.id!, 'employees', emp.name)} 
-                          className="h-9 w-9 rounded-xl border-rose-100 text-rose-500 hover:bg-rose-50"
-                        >
-                          <Trash2 size={12} />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+              {/* List block of employees (Table style) */}
+              <div className="overflow-x-auto bg-white rounded-3xl border border-slate-200/80 shadow-xs">
+                <table className="mzsoft-table">
+                  <thead>
+                    <tr>
+                      <th className="rounded-tl-2xl">Photo</th>
+                      <th>Collaborateur (Nom, Prénom)</th>
+                      <th>Matricule & Poste</th>
+                      <th>Département & Service</th>
+                      <th>Contrat</th>
+                      <th>Rémunération de Base</th>
+                      <th>Téléphone</th>
+                      <th>Statut</th>
+                      <th className="text-right rounded-tr-2xl">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEmployeesList.map(emp => (
+                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3">
+                          <div className="w-10 h-10 bg-slate-100 rounded-xl border border-slate-200/60 overflow-hidden flex items-center justify-center text-slate-500 font-extrabold shrink-0">
+                            {emp.photoBase64 ? (
+                              <img src={emp.photoBase64} alt="Profil" className="w-full h-full object-cover" loading="lazy" />
+                            ) : (
+                              emp.name?.charAt(0)
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="flex flex-col">
+                            <span className="font-extrabold text-slate-800 uppercase text-xs">{emp.name}</span>
+                            <span className="text-[10px] text-slate-400 font-bold lowercase">{emp.email || '-'}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="flex flex-col">
+                            <span className="font-extrabold text-[#0274be] text-xs">{emp.role}</span>
+                            <span className="text-[9px] text-slate-400 font-black tracking-wider">{emp.matricule}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-slate-700 text-xs">{emp.department}</span>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase">{emp.service || 'Général'}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <Badge className="bg-slate-100 border border-slate-200 text-slate-600 font-extrabold text-[9px] uppercase tracking-wide px-2 py-0.5 rounded-md">
+                            {emp.contractType}
+                          </Badge>
+                        </td>
+                        <td>
+                          <div className="flex flex-col">
+                            <span className="font-black text-slate-900 font-mono text-xs">
+                              {formatCurrency(emp.baseSalary || emp.rate)} DA
+                            </span>
+                            <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">
+                              {emp.salaryBasis === 'monthly' ? '/Mois (Forfait)' : (emp.salaryBasis === 'daily' ? '/Jour (Présence)' : '/Heure')}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="font-medium text-slate-600 text-xs">
+                          {emp.phone || '-'}
+                        </td>
+                        <td>
+                          <button 
+                            type="button"
+                            onClick={() => toggleEmployeeStatusConfirm(emp)}
+                            className={cn(
+                              "text-[9px] font-black px-2.5 py-1 rounded-full border transition-transform hover:scale-105 active:scale-95 cursor-pointer",
+                              emp.isActive 
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" 
+                                : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                            )}
+                            title="Clilquer pour modifier le statut du contrat de l'employé"
+                          >
+                            ● {emp.isActive ? 'ACTIF' : 'INACTIF'}
+                          </button>
+                        </td>
+                        <td className="text-right">
+                          <div className="flex gap-1.5 justify-end">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => setProfileViewEmp(emp)} 
+                              className="h-8 px-2.5 rounded-lg text-[9px] font-black uppercase text-slate-600 hover:text-[#0274be] border-slate-200"
+                            >
+                              <Eye size={11} className="mr-1" /> Dossier
+                            </Button>
+                            {isRH && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => handleEditEmployeeClick(emp)} 
+                                className="h-8 w-8 p-0 rounded-lg border-slate-200 hover:border-[#0274be] hover:bg-slate-50 text-slate-600 block-inline"
+                              >
+                                <Edit2 size={11} className="mx-auto" />
+                              </Button>
+                            )}
+                            {isRH && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => requestDelete(emp.id!, 'employees', emp.name)} 
+                                className="h-8 w-8 p-0 rounded-lg border-rose-100 text-rose-500 hover:bg-rose-50"
+                              >
+                                <Trash2 size={11} className="mx-auto" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
                 {filteredEmployeesList.length === 0 && (
-                  <div className="col-span-full bg-white border border-slate-200/85 p-12 text-center rounded-3xl">
+                  <div className="bg-white p-12 text-center rounded-3xl border-t border-slate-100">
                     <p className="text-slate-400 italic font-black uppercase tracking-widest text-[11px]">Aucun collaborateur correspondant aux critères de filtres.</p>
                   </div>
                 )}
@@ -2501,8 +2582,8 @@ const Employees: React.FC = () => {
           </p>
 
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1 font-bold text-xs" onClick={() => setIsDeleteConfirmOpen(false)}>Abandonner</Button>
-            <Button onClick={handleConfirmDelete} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase">
+            <Button variant="outline" className="flex-1 font-bold text-xs" onClick={() => setIsDeleteConfirmOpen(false)} disabled={isDeleting}>Abandonner</Button>
+            <Button onClick={handleConfirmDelete} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase" isLoading={isDeleting}>
               Confirmer Deletion Définitive
             </Button>
           </div>

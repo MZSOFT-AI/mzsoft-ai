@@ -11,16 +11,21 @@ import ConfirmationModal from '../components/ui/ConfirmationModal';
 import { format } from 'date-fns';
 import { Customer } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 
 import { useNotification } from '../context/NotificationContext';
 
 export default function Customers() {
   const { showToast } = useNotification();
+  const { hasPermission } = useAuth();
+  const canDelete = hasPermission('canDeleteProducts');
+  const canExport = hasPermission('canExportData');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { register, handleSubmit, reset } = useForm();
 
   useEffect(() => {
@@ -105,9 +110,11 @@ export default function Customers() {
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Base de données tiers (Clients)</p>
         </div>
         <div className="flex gap-2 mt-4 md:mt-0">
-           <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase" onClick={exportToCSV}>
-             <Download size={16} className="mr-2 text-slate-400" /> Exporter
-           </Button>
+           {canExport && (
+             <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase" onClick={exportToCSV}>
+               <Download size={16} className="mr-2 text-slate-400" /> Exporter
+             </Button>
+           )}
            <Button size="sm" className="h-9 text-xs font-bold uppercase bg-blue-600 hover:bg-blue-700" onClick={() => { setEditingCustomer(null); reset({}); setIsModalOpen(true); }}>
              <Plus size={16} className="mr-2" /> Nouveau Client
            </Button>
@@ -187,9 +194,11 @@ export default function Customers() {
                     <button onClick={() => handleEdit(client)} className="p-1.5 text-slate-400 hover:text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50">
                       <Edit2 size={14} />
                     </button>
-                    <button onClick={() => handleDelete(client.id)} className="p-1.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50">
-                      <Trash2 size={14} />
-                    </button>
+                    {canDelete && (
+                      <button onClick={() => handleDelete(client.id)} className="p-1.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -258,11 +267,13 @@ export default function Customers() {
         onConfirm={async () => {
           if (!customerToDelete) return;
           try {
+            setIsDeleting(true);
             await dbService.deleteDocument('customers', customerToDelete);
             showToast('Client supprimé', 'success');
           } catch (error) {
             showToast('Erreur lors de la suppression', 'error');
           } finally {
+            setIsDeleting(false);
             setCustomerToDelete(null);
           }
         }}
@@ -270,6 +281,7 @@ export default function Customers() {
         message="Voulez-vous vraiment supprimer ce client ? Cette action est irréversible."
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
     </div>
   );

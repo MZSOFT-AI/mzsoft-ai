@@ -55,6 +55,7 @@ const Projects: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -1683,14 +1684,16 @@ const Projects: React.FC = () => {
         onConfirm={async () => {
           if (!projectToDelete) return;
           try {
+            setIsDeleting(true);
             await deleteDoc(doc(db, 'projects', projectToDelete));
             toast.success('Chantier supprimé');
             if (activeTrackingProjectId === projectToDelete) {
               setActiveTrackingProjectId(null);
             }
-          } catch (error) {
-            toast.error('Erreur de suppression');
+          } catch (error: any) {
+            toast.error('Erreur de suppression: ' + (error.message || 'Permissions insuffisantes'));
           } finally {
+            setIsDeleting(false);
             setProjectToDelete(null);
           }
         }}
@@ -1698,6 +1701,7 @@ const Projects: React.FC = () => {
         message="Voulez-vous vraiment supprimer ce chantier ? Cette action est irréversible."
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
     </div>
   );

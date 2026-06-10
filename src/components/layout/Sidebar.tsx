@@ -50,26 +50,29 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
 
   const canShowItem = (id: string) => {
     switch (id) {
-      case 'dashboard': return true;
-      case 'pos': return hasPermission('canSell');
-      case 'inventory': return hasPermission('canManageStock') || hasPermission('canPerformInventory');
+      case 'dashboard': return hasPermission('canViewDashboard');
+      case 'pos': return hasPermission('canManageSales');
+      case 'sales-history': return hasPermission('canManageSales');
+      case 'returns': return hasPermission('canProcessReturns');
+      case 'quotes': return hasPermission('canManageSales');
+      case 'invoices': return hasPermission('canManageAccounting');
+      case 'projects': return hasPermission('canManageSales') || hasPermission('canViewDashboard');
+      case 'customers': return hasPermission('canManageCustomers');
+      // Stock & Logistic
+      case 'inventory': return hasPermission('canViewProducts') || hasPermission('canManageStock');
       case 'inventory-audits': return hasPermission('canPerformInventory');
       case 'stock-movements': return hasPermission('canManageStock');
-      case 'categories': return hasPermission('canManageStock');
-      case 'sales-history': return true;
-      case 'returns': return hasPermission('canProcessReturns');
-      case 'customers': return true;
-      case 'suppliers': return hasPermission('canManageStock');
+      case 'categories': return hasPermission('canManageCategories');
+      case 'suppliers': return hasPermission('canManageSuppliers');
+      // Enterprise / HR
+      case 'employees': return hasPermission('canManageUsers');
       case 'expenses': return hasPermission('canManageExpenses');
-      case 'accounting': return isAdmin || hasPermission('canViewReports') || hasPermission('canManageExpenses');
-      case 'cash-history': return isAdmin;
-      case 'users': return isAdmin; // Fixed: using isAdmin instead of isSuperAdmin based on user request
-      case 'quotes': return true;
-      case 'invoices': return isAdmin;
-      case 'projects': return true;
-      case 'employees': return true; // Accessible to all roles, role-based content is handled inside the page
+      case 'accounting': return hasPermission('canManageAccounting');
+      case 'cash-history': return hasPermission('canManageAccounting');
+      // Config
       case 'reports': return hasPermission('canViewReports');
-      case 'settings': return isAdmin; // Fixed: using isAdmin instead of isSuperAdmin
+      case 'users': return hasPermission('canManageUsers');
+      case 'settings': return hasPermission('canManageSettings');
       default: return true;
     }
   };

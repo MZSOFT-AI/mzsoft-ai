@@ -14,7 +14,7 @@ import { db } from '../firebase/config';
 import { dbService } from '../firebase/db';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, getSafeDate } from '../lib/utils';
 import { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { 
@@ -101,6 +101,10 @@ interface DeletionLog {
 export default function Accounting() {
   const { showToast } = useNotification();
   const { user, userData, isAdmin, isSuperAdmin, hasPermission } = useAuth();
+  
+  const canExport = hasPermission('canExportData');
+  const canPrint = hasPermission('canPrint');
+  const canDelete = hasPermission('canDeleteProducts');
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'dashboard' | 'revenues' | 'expenses' | 'invoices' | 'reports' | 'logs'>('dashboard');
@@ -125,6 +129,7 @@ export default function Accounting() {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // CRUD references
   const [editingItem, setEditingItem] = useState<any | null>(null);
@@ -146,7 +151,6 @@ export default function Accounting() {
   const expenseCategories = ['Matériaux & Fournitures', 'Salaires & Primes', 'Loyer & Charges', 'Carburant & Déplacement', 'Communication', 'Repas & Réception', 'Divers'];
 
   const showDeletionTab = isAdmin || isSuperAdmin;
-  const canDelete = isAdmin || isSuperAdmin;
 
   // Real-time listener for Sales, Invoices, Expenses, Revenues, Deletion Logs
   useEffect(() => {
@@ -192,16 +196,9 @@ export default function Accounting() {
     };
   }, [user]);
 
-  // Convert Firestore Timestamp / raw date to Date Object
+  // Convert Firestore Timestamp / raw date to Date Object safely
   const toDateObj = (dateField: any): Date => {
-    if (!dateField) return new Date();
-    if (dateField.toDate && typeof dateField.toDate === 'function') {
-      return dateField.toDate();
-    }
-    if (dateField.seconds) {
-      return new Date(dateField.seconds * 1000);
-    }
-    return new Date(dateField);
+    return getSafeDate(dateField);
   };
 
   // Check if item lies in selected range
@@ -410,6 +407,7 @@ export default function Accounting() {
     if (!itemToDelete) return;
 
     try {
+      setIsDeleting(true);
       const table = itemToDelete.type === 'revenue' ? 'revenues' : (itemToDelete.type === 'expense' ? 'expenses' : 'invoices');
       await dbService.deleteDocument(table, itemToDelete.id);
 
@@ -425,8 +423,10 @@ export default function Accounting() {
       showToast(`${itemToDelete.type === 'revenue' ? 'Revenu' : 'Dépense'} supprimé et action logguée.`, 'success');
       setIsDeleteConfirmOpen(false);
       setItemToDelete(null);
-    } catch (err) {
-      showToast('Une erreur est survenue lors de la suppression', 'error');
+    } catch (err: any) {
+      showToast('Une erreur est survenue lors de la suppression: ' + (err.message || 'Permissions insuffisantes'), 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -909,12 +909,14 @@ export default function Accounting() {
                     </p>
                   </div>
                 </div>
-                <Button 
-                  onClick={handleExportPDFReport}
-                  className="bg-[#0274be] hover:bg-[#015a94] text-white text-xs font-black uppercase tracking-widest py-3 px-6 rounded-xl border border-[#0274be] flex items-center gap-2 shadow-xs transition-transform hover:-translate-y-0.5 relative z-10"
-                >
-                  <Download size={14} /> Exporter Rapport PDF Complet
-                </Button>
+                {canExport && (
+                  <Button 
+                    onClick={handleExportPDFReport}
+                    className="bg-[#0274be] hover:bg-[#015a94] text-white text-xs font-black uppercase tracking-widest py-3 px-6 rounded-xl border border-[#0274be] flex items-center gap-2 shadow-xs transition-transform hover:-translate-y-0.5 relative z-10"
+                  >
+                    <Download size={14} /> Exporter Rapport PDF Complet
+                  </Button>
+                )}
               </div>
 
               {/* Graphic container */}
@@ -1342,12 +1344,16 @@ export default function Accounting() {
                     <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Compte Rendu Bilan PDF</h4>
                     <p className="text-xs text-slate-500 mt-1">Génère un document PDF complet contenant le total de la balance générale, de la trésorerie et la table analytique des flux d'entrées et de sorties d'argent.</p>
                   </div>
-                  <Button 
-                    onClick={handleExportPDFReport}
-                    className="bg-slate-800 hover:bg-slate-900 uppercase font-black tracking-widest text-xs py-3 rounded-xl mt-6 flex items-center justify-center gap-2"
-                  >
-                    <Download size={16} /> Exporter Rapport PDF
-                  </Button>
+                  {canExport ? (
+                    <Button 
+                      onClick={handleExportPDFReport}
+                      className="bg-slate-800 hover:bg-slate-900 uppercase font-black tracking-widest text-xs py-3 rounded-xl mt-6 flex items-center justify-center gap-2"
+                    >
+                      <Download size={16} /> Exporter Rapport PDF
+                    </Button>
+                  ) : (
+                    <p className="text-[10px] text-rose-500 font-bold uppercase mt-4">Export non autorisé</p>
+                  )}
                 </div>
 
                 {/* Excel generation box */}
@@ -1359,12 +1365,16 @@ export default function Accounting() {
                     <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Bilan XLSX (Microsoft Excel)</h4>
                     <p className="text-xs text-slate-500 mt-1">Préparez un classeur structuré pour votre comptable comprenant l'intégralité des transactions, des catégories et des calculs financiers automatisés.</p>
                   </div>
-                  <Button 
-                    onClick={handleExportExcelReport}
-                    className="bg-emerald-600 hover:bg-emerald-700 uppercase font-black tracking-widest text-xs py-3 rounded-xl mt-6 flex items-center justify-center gap-2 border border-emerald-600/10"
-                  >
-                    <FileSpreadsheet size={16} /> Générer Classeur Excel
-                  </Button>
+                  {canExport ? (
+                    <Button 
+                      onClick={handleExportExcelReport}
+                      className="bg-emerald-600 hover:bg-emerald-700 uppercase font-black tracking-widest text-xs py-3 rounded-xl mt-6 flex items-center justify-center gap-2 border border-emerald-600/10"
+                    >
+                      <FileSpreadsheet size={16} /> Générer Classeur Excel
+                    </Button>
+                  ) : (
+                    <p className="text-[10px] text-rose-500 font-bold uppercase mt-4">Export non autorisé</p>
+                  )}
                 </div>
 
               </div>
@@ -1635,8 +1645,8 @@ export default function Accounting() {
           )}
 
           <div className="flex gap-2 justify-end pt-2">
-            <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Annuler et garder</Button>
-            <Button onClick={confirmDelete} className="bg-rose-600 hover:bg-rose-700 text-xs font-black uppercase">Confirmer suppression</Button>
+            <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)} disabled={isDeleting}>Annuler et garder</Button>
+            <Button onClick={confirmDelete} className="bg-rose-600 hover:bg-rose-700 text-xs font-black uppercase" isLoading={isDeleting}>Confirmer suppression</Button>
           </div>
         </div>
       </Modal>

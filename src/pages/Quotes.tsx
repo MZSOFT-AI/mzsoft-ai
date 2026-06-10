@@ -50,6 +50,7 @@ const Quotes: React.FC = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
   const [isConvertToInvoiceModalOpen, setIsConvertToInvoiceModalOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
@@ -306,11 +307,14 @@ const Quotes: React.FC = () => {
   const handleDelete = async () => {
     if (!selectedQuote) return;
     try {
+      setIsDeleting(true);
       await dbService.deleteDocument('quotes', selectedQuote.id);
       showToast("Devis supprimé", "success");
       setIsDeleteModalOpen(false);
-    } catch (err) {
-      showToast("Erreur lors de la suppression", "error");
+    } catch (err: any) {
+      showToast(`Erreur lors de la suppression: ${err.message || 'Permissions insuffisantes'}`, "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -957,6 +961,7 @@ const Quotes: React.FC = () => {
         message="Êtes-vous sûr de vouloir supprimer ce devis ? Cette action est irréversible."
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
 
       <ConfirmationModal
@@ -967,6 +972,7 @@ const Quotes: React.FC = () => {
         message={`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedQuoteIds.length} devis sélectionnés ? Cette action est irréversible.`}
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isSaving}
       />
 
       <ConfirmationModal

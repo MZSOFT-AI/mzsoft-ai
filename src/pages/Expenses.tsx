@@ -102,6 +102,7 @@ export default function Expenses() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [previewJustificatif, setPreviewJustificatif] = useState<string | null>(null);
   
   // Dashboard & Visual Analytics Toggle 
@@ -1608,6 +1609,7 @@ export default function Expenses() {
         onConfirm={async () => {
           if (!expenseToDelete || !expenseToDelete.id) return;
           try {
+            setIsDeleting(true);
             await deleteDoc(doc(db, 'expenses', expenseToDelete.id));
             
             // Re-adjust active session budget
@@ -1619,9 +1621,10 @@ export default function Expenses() {
               });
             }
             showToast("Dépense supprimée définitivement", "success");
-          } catch (error) {
-            showToast("Erreur lors de la suppression", "error");
+          } catch (error: any) {
+            showToast(`Erreur lors de la suppression: ${error.message || 'Permissions insuffisantes'}`, "error");
           } finally {
+            setIsDeleting(false);
             setExpenseToDelete(null);
           }
         }}
@@ -1629,6 +1632,7 @@ export default function Expenses() {
         message={`Voulez-vous vraiment supprimer définitivement la dépense ${expenseToDelete?.expenseNum || ''} d'un montant de ${formatCurrency(expenseToDelete?.amount || 0)} ?`}
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
     </div>
   );

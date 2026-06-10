@@ -185,8 +185,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     createdAt: serverTimestamp(),
                     photoURL: firebaseUser.photoURL || null,
                     permissions: {
-                      canManageStock: true, canDeleteProducts: true, canSell: true, canProcessReturns: true,
-                      canPerformInventory: true, canManageExpenses: true, canViewReports: true, canManageUsers: true
+                      canViewDashboard: true, canViewProducts: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: true,
+                      canManageCategories: true, canManageStock: true, canPerformInventory: true, canManageSales: true, canProcessReturns: true,
+                      canManageCustomers: true, canManageSuppliers: true, canManageAccounting: true, canManageExpenses: true, canViewReports: true,
+                      canExportData: true, canPrint: true, canManageUsers: true, canManagePermissions: true, canManageSettings: true,
+                      canManageBackups: true, canViewLogs: true
                     },
                     status: 'active',
                     uid: firebaseUser.uid
@@ -437,8 +440,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               status: 'active',
               createdAt: serverTimestamp(),
               permissions: {
-                canManageStock: false, canDeleteProducts: true, canSell: true, canProcessReturns: false,
-                canPerformInventory: false, canManageExpenses: false, canViewReports: false, canManageUsers: false
+                canViewDashboard: true, canViewProducts: true, canAddProducts: false, canEditProducts: false, canDeleteProducts: false,
+                canManageCategories: false, canManageStock: false, canPerformInventory: false, canManageSales: true, canProcessReturns: false,
+                canManageCustomers: true, canManageSuppliers: false, canManageAccounting: false, canManageExpenses: false, canViewReports: false,
+                canExportData: false, canPrint: true, canManageUsers: false, canManagePermissions: false, canManageSettings: false,
+                canManageBackups: false, canViewLogs: false
               }
             };
             await setDoc(userDocRef, cleanObject(fallbackUserData));
@@ -504,14 +510,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         uid: adminId,
         status: 'active',
         permissions: {
-          canManageStock: true,
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: true,
+          canEditProducts: true,
           canDeleteProducts: true,
-          canSell: true,
-          canProcessReturns: true,
+          canManageCategories: true,
+          canManageStock: true,
           canPerformInventory: true,
+          canManageSales: true,
+          canProcessReturns: true,
+          canManageCustomers: true,
+          canManageSuppliers: true,
+          canManageAccounting: true,
           canManageExpenses: true,
           canViewReports: true,
-          canManageUsers: true
+          canExportData: true,
+          canPrint: true,
+          canManageUsers: true,
+          canManagePermissions: true,
+          canManageSettings: true,
+          canManageBackups: true,
+          canViewLogs: true
         }
       };
 
@@ -577,11 +597,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       getCachedRole() === 'superadmin';
   
   const isAdminOnly = userData?.role === 'admin' || getCachedRole() === 'admin';
-  const isAdmin = isSuperAdmin || isAdminOnly || userData?.role === 'manager' || getCachedRole() === 'manager';
+  const isAdmin = isSuperAdmin || isAdminOnly || userData?.role === 'manager' || getCachedRole() === 'manager' || userData?.role === 'gerant' || getCachedRole() === 'gerant';
 
-  const hasPermission = (permission: keyof UserPermissions) => {
+  const hasPermission = (permission: keyof UserPermissions | 'canSell') => {
     if (isSuperAdmin) return true;
-    if (isAdminOnly && permission !== 'canManageUsers') return true;
     
     // Check local storage cached permissions as a fallback
     let cachedPerms: any = null;
@@ -594,12 +613,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const permissions = userData?.permissions || cachedPerms;
     if (!permissions) {
+      if (isAdminOnly) return true;
       // Safe defaults to keep standard features active on network lags
-      if (permission === 'canSell') return true;
-      if (permission === 'canDeleteProducts') return true;
+      if (permission === 'canSell' || permission === 'canManageSales') return true;
+      if (permission === 'canViewDashboard') return true;
+      if (permission === 'canViewProducts') return true;
       return false;
     }
-    return !!permissions[permission];
+
+    // Map legacy permissions / aliases
+    if (permission === 'canSell') {
+      return !!(permissions.canManageSales || (permissions as any).canSell);
+    }
+
+    return !!permissions[permission as keyof UserPermissions];
   };
 
   const authContextValue: AuthContextType = {

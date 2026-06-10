@@ -17,6 +17,7 @@ export default function Categories() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { register, handleSubmit, reset } = useForm();
   
   useEffect(() => {
@@ -152,11 +153,13 @@ export default function Categories() {
         onConfirm={async () => {
           if (!categoryToDelete) return;
           try {
+            setIsDeleting(true);
             await dbService.deleteDocument('categories', categoryToDelete);
             showToast('Catégorie supprimée', 'success');
           } catch (error) {
             showToast('Erreur lors de la suppression', 'error');
           } finally {
+            setIsDeleting(false);
             setCategoryToDelete(null);
           }
         }}
@@ -164,6 +167,7 @@ export default function Categories() {
         message="Voulez-vous vraiment supprimer cette catégorie ? Cela n'affectera pas les produits déjà créés."
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
     </div>
   );

@@ -57,7 +57,8 @@ const POS: React.FC = () => {
 
   const currentUid = user?.uid || (userData && 'id' in userData ? (userData as any).id : null);
 
-  const canSell = hasPermission ? hasPermission('canSell') : false;
+  const canSell = hasPermission ? hasPermission('canManageSales') : false;
+  const canPrint = hasPermission ? hasPermission('canPrint') : false;
   
   const { data: products, loading: productsLoading } = useCollection<Product>('products', [orderBy('name')]);
   const { data: categories } = useCollection<Category>('categories', [orderBy('name')]);
@@ -109,6 +110,8 @@ const POS: React.FC = () => {
   }, [receivedAmount, total]);
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const receivedAmountInputRef = useRef<HTMLInputElement>(null);
   
   useEffect(() => {
     setCustomInfoOverride(settings.customCompanyInfo || '');
@@ -183,12 +186,13 @@ const POS: React.FC = () => {
 
   const filteredProducts = useMemo(() => {
     if (!products) return [];
+    const lowerQuery = searchQuery.toLowerCase();
     return products.filter(p => {
       const pName = p.name || '';
       const pSku = p.sku || '';
       const pBarcode = p.barcode || '';
-      const matchesSearch = pName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           pSku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      const matchesSearch = pName.toLowerCase().includes(lowerQuery) || 
+                           pSku.toLowerCase().includes(lowerQuery) ||
                            pBarcode.includes(searchQuery);
       const matchesCategory = selectedCategory ? p.categoryId === selectedCategory : true;
       return matchesSearch && matchesCategory;
@@ -596,24 +600,64 @@ const POS: React.FC = () => {
   // Keyboard accessibility & Barcode Scanner support
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Shortcut for sale
-      if (e.key === 'F9') { 
+      // Shortcut for Focus Search Input (F1)
+      if (e.key === 'F1') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
+      // Shortcut for Validate Sale (F2 or F9)
+      if (e.key === 'F2' || e.key === 'F9') { 
         e.preventDefault();
         handleSale();
         return;
       }
       
-      // Shortcut for clear
-      if (e.key === 'F2') { 
+      // Shortcut for Pay in Cash (F3)
+      if (e.key === 'F3') {
         e.preventDefault();
-        setCart([]);
+        setPaymentMethod('cash');
+        showToast("Saisie Espèces active", "info");
+        return;
+      }
+
+      // Shortcut for Pay with Card (F4)
+      if (e.key === 'F4') {
+        e.preventDefault();
+        setPaymentMethod('card');
+        showToast("Saisie Carte active", "info");
         return;
       }
       
-      // Shortcut for Pending
-      if (e.key === 'F4') { 
+      // Shortcut for Suspend Sale (F6)
+      if (e.key === 'F6') { 
         e.preventDefault();
         handleSuspendSale();
+        return;
+      }
+
+      // Shortcut for pending sales modal toggle (F7)
+      if (e.key === 'F7') {
+        e.preventDefault();
+        setShowPendingModal(prev => !prev);
+        return;
+      }
+
+      // Shortcut for clear cart (F8)
+      if (e.key === 'F8') { 
+        e.preventDefault();
+        setCart([]);
+        showToast("Panier vidé", "info");
+        return;
+      }
+
+      // Shortcut for focusing received amount input (F10)
+      if (e.key === 'F10') {
+        e.preventDefault();
+        receivedAmountInputRef.current?.focus();
+        receivedAmountInputRef.current?.select();
         return;
       }
 
@@ -659,7 +703,7 @@ const POS: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSale, handleSuspendSale, handleBarcodeScan]);
+  }, [handleSale, handleSuspendSale, handleBarcodeScan, setPaymentMethod, setShowPendingModal, setCart, showToast]);
 
   // Auto-save on unmount
   useEffect(() => {
@@ -783,8 +827,9 @@ const POS: React.FC = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
+                ref={searchInputRef}
                 type="text"
-                placeholder="Rechercher un produit... (Nom, SKU, Code-barre)"
+                placeholder="Rechercher un produit... (Nom, SKU, Code-barre) [F1]"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
@@ -801,7 +846,7 @@ const POS: React.FC = () => {
                 onClick={() => setShowPendingModal(true)} 
                 className="text-xs h-9 relative border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
               >
-                <Zap size={16} className="mr-1" /> En attente
+                <Zap size={16} className="mr-1" /> En attente (F7)
                 {pendingSales.length > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-600 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white">
                     {pendingSales.length}
@@ -817,14 +862,14 @@ const POS: React.FC = () => {
               >
                 <div className="flex items-center gap-1">
                    {isSuspending ? <RefreshCw size={14} className="animate-spin" /> : <ChevronRight size={14} />}
-                   <span>Instance (F4)</span>
+                   <span>Instance (F6)</span>
                 </div>
               </Button>
               <Button variant="outline" size="sm" onClick={() => navigate('/sales-history')} className="text-xs h-9">
                 <History size={16} className="mr-1" /> Historique
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCart([])} className="text-xs h-9">
-                <RefreshCw size={16} className="mr-1" /> Vider
+              <Button variant="outline" size="sm" onClick={() => setCart([])} className="text-xs h-9 text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100">
+                <RefreshCw size={16} className="mr-1 text-rose-500" /> Vider (F8)
               </Button>
               {activeSession && (
                 <Button 
@@ -836,6 +881,42 @@ const POS: React.FC = () => {
                 </Button>
               )}
             </div>
+          </div>
+
+          {/* Bar de Raccourcis Clavier */}
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F1</span>
+              Recherche produit
+            </span>
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F2 / F9</span>
+              Valider la Vente
+            </span>
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F3</span>
+              Espèces (Cash)
+            </span>
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F4</span>
+              Carte / Virement
+            </span>
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F6</span>
+              Mettre en attente (Instance)
+            </span>
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F7</span>
+              Ventes en instance
+            </span>
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <span className="bg-emerald-600 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F10</span>
+              Saisir montant reçu
+            </span>
+            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200 text-rose-600">
+              <span className="bg-rose-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F8</span>
+              Vider le Panier
+            </span>
           </div>
         </div>
 
@@ -1181,6 +1262,7 @@ const POS: React.FC = () => {
                 <span className="text-[10px] font-bold text-blue-600">F10</span>
               </div>
               <input 
+                ref={receivedAmountInputRef}
                 type="number"
                 value={receivedAmount}
                 onChange={(e) => setReceivedAmount(e.target.value)}
@@ -1214,7 +1296,7 @@ const POS: React.FC = () => {
             isLoading={isProcessing}
             onClick={handleSale}
           >
-            <CheckCircle2 className="mr-3" size={24} /> Valider (F9)
+            <CheckCircle2 className="mr-3" size={24} /> Valider (F2 / F9)
           </Button>
         </div>
       </div>
@@ -1381,9 +1463,13 @@ const POS: React.FC = () => {
                 <h3 className="text-xl font-black uppercase mb-1">Vente Enregistrée</h3>
                 <p className="text-slate-500 text-xs mb-6">L'opération s'est terminée avec succès.</p>
                 <div className="grid grid-cols-1 w-full gap-2">
-                   <Button onClick={() => lastSale && pdfService.generateInvoice(lastSale)} className="bg-blue-600 hover:bg-blue-700">
-                     <Printer size={16} className="mr-2" /> Imprimer Ticket
-                   </Button>
+                   {canPrint ? (
+                     <Button onClick={() => lastSale && pdfService.generateInvoice(lastSale)} className="bg-blue-600 hover:bg-blue-700">
+                       <Printer size={16} className="mr-2" /> Imprimer Ticket
+                     </Button>
+                   ) : (
+                     <p className="text-[10px] text-rose-500 font-bold uppercase py-2">Impression non autorisée</p>
+                   )}
                    <Button variant="outline" onClick={() => setShowSuccess(false)}>Terminer</Button>
                 </div>
              </motion.div>

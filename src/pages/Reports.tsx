@@ -54,6 +54,8 @@ type TabType = 'overview' | 'valuation' | 'movements' | 'sales' | 'traceability'
 
 export default function Reports() {
   const { user, hasPermission } = useAuth();
+  const canExport = hasPermission('canExportData');
+  const canPrint = hasPermission('canPrint');
   const { settings } = useSettings();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   
@@ -117,48 +119,90 @@ export default function Reports() {
 
   // --- CALCULATIONS ---
 
-  // Aggregate sales by date
-  const salesByDate = sales.reduce((acc: any[], sale: any) => {
-    if (!sale.createdAt) return acc;
-    const dateValue = (sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : (sale.createdAt instanceof Date ? sale.createdAt : new Date());
-    const date = format(dateValue, 'dd/MM', { locale: fr });
-    const existing = acc.find(item => item.date === date);
-    if (existing) {
-      existing.revenue += (sale.totalAmount || 0);
-      existing.count += 1;
-    } else {
-      acc.push({ date, revenue: sale.totalAmount || 0, count: 1 });
-    }
-    return acc;
-  }, []).reverse().slice(-7);
+  const {
+    salesByDate,
+    totalStockItems,
+    totalPurchaseValue,
+    totalResaleValue,
+    potentialProfit,
+    topProducts,
+    topCustomers,
+    totalRevenue,
+    avgTicket
+  } = useMemo(() => {
+    // Aggregate sales by date
+    const sByDate = sales.reduce((acc: any[], sale: any) => {
+      if (!sale.createdAt) return acc;
+      const dateValue = (sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : (sale.createdAt instanceof Date ? sale.createdAt : new Date());
+      const date = format(dateValue, 'dd/MM', { locale: fr });
+      const existing = acc.find(item => item.date === date);
+      if (existing) {
+        existing.revenue += (sale.totalAmount || 0);
+        existing.count += 1;
+      } else {
+        acc.push({ date, revenue: sale.totalAmount || 0, count: 1 });
+      }
+      return acc;
+    }, []).reverse().slice(-7);
 
-  // Valuation calculations
-  const totalStockItems = products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0);
-  const totalPurchaseValue = products.reduce((acc, p) => acc + ((p.stockQuantity || 0) * (p.purchasePrice || 0)), 0);
-  const totalResaleValue = products.reduce((acc, p) => acc + ((p.stockQuantity || 0) * (p.sellingPrice || 0)), 0);
-  const potentialProfit = totalResaleValue - totalPurchaseValue;
+    // Valuation calculations
+    const stockItems = products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0);
+    const purchaseVal = products.reduce((acc, p) => acc + ((p.stockQuantity || 0) * (p.purchasePrice || 0)), 0);
+    const resaleVal = products.reduce((acc, p) => acc + ((p.stockQuantity || 0) * (p.sellingPrice || 0)), 0);
+    const latentProfit = resaleVal - purchaseVal;
 
-  // Sales Analysis
-  const topProducts = products
-    .map(p => {
-      const soldQty = sales.reduce((acc, s) => {
-        const item = s.items?.find((i: any) => i.id === p.id);
-        return acc + (item?.quantity || 0);
-      }, 0);
-      const revenue = soldQty * p.sellingPrice;
-      return { ...p, soldQty, revenue };
-    })
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 10);
+    // Sales Analysis - O(N + M) implementation using map lookup
+    const productSalesMap = new Map<string, number>();
+    sales.forEach(s => {
+      s.items?.forEach((item: any) => {
+        if (item.id) {
+          productSalesMap.set(item.id, (productSalesMap.get(item.id) || 0) + (item.quantity || 0));
+        }
+      });
+    });
 
-  const topCustomers = customers
-    .map(c => {
-      const customerSales = sales.filter(s => s.customerId === c.id || s.customerName === c.name);
-      const totalPurchase = customerSales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
-      return { ...c, totalPurchase, count: customerSales.length };
-    })
-    .sort((a, b) => b.totalPurchase - a.totalPurchase)
-    .slice(0, 10);
+    const topProds = products
+      .map(p => {
+        const soldQty = productSalesMap.get(p.id) || 0;
+        const revenue = soldQty * p.sellingPrice;
+        return { ...p, soldQty, revenue };
+      })
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    // Customers Analysis - O(N + M) implementation using map lookup
+    const customerSalesMap = new Map<string, { total: number; count: number }>();
+    sales.forEach(s => {
+      const key = s.customerId || s.customerName || 'unknown';
+      const stats = customerSalesMap.get(key) || { total: 0, count: 0 };
+      stats.total += (s.totalAmount || 0);
+      stats.count += 1;
+      customerSalesMap.set(key, stats);
+    });
+
+    const topCusts = customers
+      .map(c => {
+        const stats = customerSalesMap.get(c.id) || customerSalesMap.get(c.name) || { total: 0, count: 0 };
+        return { ...c, totalPurchase: stats.total, count: stats.count };
+      })
+      .sort((a, b) => b.totalPurchase - a.totalPurchase)
+      .slice(0, 10);
+
+    const totRev = sales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
+    const averageTicket = sales.length > 0 ? (totRev / sales.length).toFixed(2) : 0;
+
+    return {
+      salesByDate: sByDate,
+      totalStockItems: stockItems,
+      totalPurchaseValue: purchaseVal,
+      totalResaleValue: resaleVal,
+      potentialProfit: latentProfit,
+      topProducts: topProds,
+      topCustomers: topCusts,
+      totalRevenue: totRev,
+      avgTicket: averageTicket
+    };
+  }, [sales, products, customers]);
 
   // --- ACTIONS ---
 
@@ -267,9 +311,6 @@ export default function Reports() {
     saveAs(new Blob([buffer]), `RAPPORT_GLOBAL_ERP_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
   };
 
-  const totalRevenue = sales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
-  const avgTicket = sales.length > 0 ? (totalRevenue / sales.length).toFixed(2) : 0;
-
   const pieData = useMemo(() => {
     return categories.map(c => {
       const catProducts = products.filter(p => p.categoryId === c.id);
@@ -315,12 +356,16 @@ export default function Reports() {
           <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Données temps réel du système</p>
         </div>
         <div className="flex gap-2">
-           <Button variant="outline" className="text-xs font-black uppercase h-9 border-slate-200" onClick={() => window.print()}>
-             <FileText size={16} className="mr-2" /> Imprimer Page
-           </Button>
-           <Button className="text-xs font-black uppercase h-9 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200" onClick={handleGlobalExport}>
-             <Download size={16} className="mr-2" /> Rapport Excel Pro
-           </Button>
+           {canPrint && (
+             <Button variant="outline" className="text-xs font-black uppercase h-9 border-slate-200" onClick={() => window.print()}>
+               <FileText size={16} className="mr-2" /> Imprimer Page
+             </Button>
+           )}
+           {canExport && (
+             <Button className="text-xs font-black uppercase h-9 bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200" onClick={handleGlobalExport}>
+               <Download size={16} className="mr-2" /> Rapport Excel Pro
+             </Button>
+           )}
         </div>
       </div>
 

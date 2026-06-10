@@ -64,6 +64,7 @@ const productSchema = z.object({
     const n = Number(val);
     return isNaN(n) ? undefined : n;
   }, z.number().optional()),
+  photoBase64: z.string().optional(),
 }) as z.ZodType<any>;
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -84,8 +85,15 @@ const Inventory: React.FC = () => {
   const [isStockInModalOpen, setIsStockInModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   
-  const canManageStock = hasPermission('canManageStock') || isAdmin || isSuperAdmin;
-  const canDeleteProducts = true;
+  const canViewProducts = hasPermission('canViewProducts');
+  const canAddProducts = hasPermission('canAddProducts');
+  const canEditProducts = hasPermission('canEditProducts');
+  const canDeleteProducts = hasPermission('canDeleteProducts');
+  const canManageStock = hasPermission('canManageStock');
+  const canManageCategories = hasPermission('canManageCategories');
+  const canPerformInventory = hasPermission('canPerformInventory');
+  const canExportData = hasPermission('canExportData');
+  const canPrint = hasPermission('canPrint');
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -112,6 +120,44 @@ const Inventory: React.FC = () => {
 
   const unitValue = watch('unit');
   const nameValue = watch('name');
+  const photoBase64Value = watch('photoBase64');
+
+  const compressAndSetPhoto = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 300;
+        const MAX_HEIGHT = 300;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          setValue('photoBase64', dataUrl);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   React.useEffect(() => {
     if (unitValue === 'ml' || (nameValue && nameValue.toLowerCase().includes('cable'))) {
@@ -373,6 +419,7 @@ const Inventory: React.FC = () => {
         ? "Action refusée : Vous n'avez pas les droits d'administrateur pour supprimer." 
         : error.message || "Erreur lors de la suppression";
       showToast(message, 'error');
+      setProductToDelete(null);
     } finally {
       setLoading(false);
     }
@@ -532,30 +579,70 @@ const Inventory: React.FC = () => {
     return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredProducts, currentPage]);
 
+  const stockStats = useMemo(() => {
+    const prodList = products || [];
+    let totalProducts = prodList.length;
+    let totalQty = 0;
+    let totalPurchaseValuation = 0;
+    let totalSalesValuation = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    prodList.forEach(p => {
+      totalQty += p.stockQuantity || 0;
+      totalPurchaseValuation += (p.stockQuantity || 0) * (p.purchasePrice || 0);
+      totalSalesValuation += (p.stockQuantity || 0) * (p.sellingPrice || 0);
+      if (p.stockQuantity <= 0) {
+        outOfStockCount++;
+      } else if (p.stockQuantity <= (p.minStockLevel || 5)) {
+        lowStockCount++;
+      }
+    });
+
+    return {
+      totalProducts,
+      totalQty,
+      totalPurchaseValuation,
+      totalSalesValuation,
+      lowStockCount,
+      outOfStockCount
+    };
+  }, [products]);
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-white border border-slate-200">
+      {/* Premium WooCommerce Styled Header Tag */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-gradient-to-r from-[#7f54b3] via-[#96588a] to-[#5a3982] rounded-3xl text-white shadow-sm ring-1 ring-black/5">
         <div>
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Gestion du Stock</h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Inventaire Centralisé</p>
+          <div className="flex items-center gap-2">
+            <span className="bg-white/20 text-white rounded-full p-1.5 backdrop-blur-md">
+              <Package size={22} className="animate-pulse" />
+            </span>
+            <h1 className="text-xl font-black uppercase tracking-tight">WooCommerce Stock Manager</h1>
+          </div>
+          <p className="text-purple-100 text-[11px] font-black uppercase tracking-widest mt-1">
+            MZ-ERP PRO • Module d'Inventaire et de Valorisation Intégral (PUMP Actif)
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canPerformInventory && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate('/inventory/audits')} 
+              className="text-xs h-9 font-black uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            >
+              <ClipboardList size={16} className="mr-2" />
+              Inventaires (Physique)
+            </Button>
+          )}
           {canManageStock && (
             <>
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => navigate('/inventory/audits')} 
-                className="text-xs h-9 font-black uppercase border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-              >
-                <ClipboardList size={16} className="mr-2" />
-                Inventaires (Physique)
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
                 onClick={() => setIsStockInModalOpen(true)} 
-                className="text-xs h-9 font-bold uppercase border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                className="text-xs h-9 font-bold uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
               >
                 <PlusSquare size={16} className="mr-2" />
                 Charger Stock (Achat)
@@ -564,26 +651,99 @@ const Inventory: React.FC = () => {
                 variant="outline" 
                 size="sm" 
                 onClick={() => setIsReturnModalOpen(true)} 
-                className="text-xs h-9 font-bold uppercase border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                className="text-xs h-9 font-bold uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
               >
                 <RotateCcw size={16} className="mr-2" />
                 Retour Fournisseur
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setIsCatModalOpen(true)} className="text-xs h-9 font-bold uppercase">
-                <Tags size={16} className="mr-2" />
-                Catégories
-              </Button>
-              <Button size="sm" onClick={() => { setEditingProduct(null); reset({ minStockLevel: 5 }); setIsModalOpen(true); }} className="text-xs h-9 bg-blue-600 hover:bg-blue-700 font-bold uppercase">
-                <Plus size={16} className="mr-2" />
-                Ajouter Produit
-              </Button>
             </>
+          )}
+          {canManageCategories && (
+            <Button variant="outline" size="sm" onClick={() => setIsCatModalOpen(true)} className="text-xs h-9 font-bold uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
+              <Tags size={16} className="mr-2" />
+              Catégories
+            </Button>
+          )}
+          {canAddProducts && (
+            <Button size="sm" onClick={() => { setEditingProduct(null); reset({ minStockLevel: 5 }); setIsModalOpen(true); }} className="text-xs h-9 bg-white text-[#7f54b3] hover:bg-purple-50 font-extrabold uppercase shadow-md transition-transform hover:-translate-y-0.5">
+              <Plus size={16} className="mr-2" />
+              Ajouter Produit
+            </Button>
           )}
         </div>
       </div>
 
+      {/* WooCommerce Stock Manager Top Dashboard Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200/80 shadow-xs p-4 rounded-2xl flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Désignations Produits</p>
+            <h3 className="text-xl font-black text-slate-800 font-mono mt-1">{stockStats.totalProducts} Réf.</h3>
+            <span className="text-[9px] text-[#7f54b3] font-black uppercase mt-0.5 block">Total Catalogue</span>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-purple-50 flex items-center justify-center text-[#7f54b3]">
+            <Tags size={18} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200/80 shadow-xs p-4 rounded-2xl flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quantités Globales</p>
+            <h3 className="text-xl font-black text-slate-800 font-mono mt-1">
+              {Number(stockStats.totalQty).toFixed(2).replace(/\.00$/, '')} <span className="text-xs font-bold text-slate-400 font-sans">unités</span>
+            </h3>
+            <span className="text-[9px] text-emerald-600 font-black uppercase mt-0.5 block">Articles Physiques</span>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+            <Package size={18} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200/80 shadow-xs p-4 rounded-2xl flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valeur d'Achat (PUMP)</p>
+            <h3 className="text-base font-black text-slate-800 font-mono mt-1 text-[#0274be]">
+              {formatCurrency(stockStats.totalPurchaseValuation)} DA
+            </h3>
+            <p className="text-[9px] font-bold text-slate-400 uppercase block mt-0.5">
+              Vente Est: <span className="text-[#7f54b3] font-black">{formatCurrency(stockStats.totalSalesValuation)} DA</span>
+            </p>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-[#0274be]">
+            <Box size={18} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200/80 shadow-xs p-4 rounded-2xl flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Alertes de Stock</p>
+            <div className="flex gap-1.5 mt-1">
+              <span className={cn(
+                "text-[9px] font-black px-1.5 py-0.5 rounded",
+                stockStats.outOfStockCount > 0 ? "bg-rose-50 text-rose-700 border border-rose-100" : "bg-slate-50 text-slate-400"
+              )}>
+                {stockStats.outOfStockCount} Rupture{stockStats.outOfStockCount > 1 ? 's' : ''}
+              </span>
+              <span className={cn(
+                "text-[9px] font-black px-1.5 py-0.5 rounded",
+                stockStats.lowStockCount > 0 ? "bg-amber-50 text-amber-700 border border-amber-100" : "bg-slate-50 text-slate-400"
+              )}>
+                {stockStats.lowStockCount} Alerte{stockStats.lowStockCount > 1 ? 's' : ''}
+              </span>
+            </div>
+            <span className="text-[9px] text-[#7f54b3] font-black uppercase mt-1 block">Seuils RUPTURE / FAIBLE</span>
+          </div>
+          <div className={cn(
+            "w-11 h-11 rounded-xl flex items-center justify-center",
+            (stockStats.outOfStockCount > 0 || stockStats.lowStockCount > 0) ? "bg-amber-50 text-amber-600 animate-pulse" : "bg-slate-50 text-slate-400"
+          )}>
+            <AlertCircle size={18} />
+          </div>
+        </div>
+      </div>
+
       {/* Floating Action Button for Mobile */}
-      {canManageStock && (
+      {canAddProducts && (
         <button
           onClick={() => { setEditingProduct(null); reset({ minStockLevel: 5 }); setIsModalOpen(true); }}
           className="fixed bottom-24 right-6 w-14 h-14 bg-slate-800 text-white rounded-full shadow-2xl flex items-center justify-center lg:hidden z-40 active:scale-90 transition-transform"
@@ -660,10 +820,12 @@ const Inventory: React.FC = () => {
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               
-              <Button variant="outline" size="sm" onClick={handleExportInventoryExcel} className="hidden sm:flex ml-2 text-xs h-9 uppercase font-bold border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
-                <Download size={16} className="mr-2" />
-                Export Excel Pro
-              </Button>
+              {canExportData && (
+                <Button variant="outline" size="sm" onClick={handleExportInventoryExcel} className="hidden sm:flex ml-2 text-xs h-9 uppercase font-bold border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+                  <Download size={16} className="mr-2" />
+                  Export Excel Pro
+                </Button>
+              )}
               
               {canDeleteProducts && selectedIds.length > 0 && (
                 <Button 
@@ -680,7 +842,7 @@ const Inventory: React.FC = () => {
           </div>
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 bg-white">
+      <div className="overflow-x-auto border border-slate-200/80 bg-white rounded-2xl">
         <table className="mzsoft-table">
           <thead>
             <tr>
@@ -688,19 +850,20 @@ const Inventory: React.FC = () => {
                 <th className="w-10 px-4">
                   <input 
                     type="checkbox" 
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    className="w-4 h-4 rounded border-slate-300 text-[#7f54b3] focus:ring-[#7f54b3] cursor-pointer"
                     checked={filteredProducts.length > 0 && selectedIds.length === filteredProducts.length}
                     onChange={toggleSelectAll}
                   />
                 </th>
               )}
+              <th className="w-12">Visuel</th>
               <th>Désignation</th>
               <th>Catégorie</th>
-              <th>SKU</th>
-              <th className="text-center">Quantité</th>
+              <th className="text-center w-36">Quantité</th>
+              <th>Statut WooCommerce</th>
               <th className="text-right">Prix Vente</th>
               <th className="text-right">Prix Achat</th>
-              <th className="w-24 text-center text-slate-400">...</th>
+              <th className="w-24 text-center text-slate-400">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -710,99 +873,119 @@ const Inventory: React.FC = () => {
               
               return (
                 <tr key={product.id} className={cn(
-                  "hover:bg-blue-50 transition-colors",
-                  selectedIds.includes(product.id) && "bg-blue-50/50"
+                  "hover:bg-[#7f54b3]/5 transition-colors border-b border-slate-100",
+                  selectedIds.includes(product.id) && "bg-purple-50/40"
                 )}>
                   {canDeleteProducts && (
                     <td className="px-4">
                       <input 
                         type="checkbox" 
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        className="w-4 h-4 rounded border-slate-300 text-[#7f54b3] focus:ring-[#7f54b3] cursor-pointer"
                         checked={selectedIds.includes(product.id)}
                         onChange={() => toggleSelectOne(product.id)}
                       />
                     </td>
                   )}
                   <td>
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-10 h-10 rounded-full flex items-center justify-center border-2 shadow-sm transition-transform hover:scale-110",
-                        stockStatus === 'out' ? "bg-rose-100 text-rose-600 border-rose-500" : 
-                        stockStatus === 'low' ? "bg-amber-100 text-amber-600 border-amber-500" : 
-                        "bg-emerald-100 text-emerald-600 border-emerald-500"
-                      )}>
-                        <Package size={16} />
-                      </div>
-                      <div>
-                        <p className="font-black text-slate-800 text-sm leading-tight uppercase tracking-tight">{product.name}</p>
-                        <div className="flex items-center gap-2">
-                           <span className="text-[9px] font-mono text-slate-400 bg-slate-50 px-1 border border-slate-100">
-                             {product.sku || 'N/A'}
+                    <div className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center text-slate-500 font-extrabold shrink-0 shadow-2xs">
+                      {product.photoBase64 ? (
+                        <img src={product.photoBase64} alt="Produit" className="w-full h-full object-cover" />
+                      ) : (
+                        <Box size={14} className="text-[#7f54b3]" />
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="flex flex-col">
+                      <span className="font-extrabold text-slate-800 text-xs uppercase leading-tight tracking-tight">{product.name}</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                         <span className="text-[9px] font-mono leading-none font-bold text-slate-400 bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
+                           {product.sku || 'N/A'}
+                         </span>
+                         {product.barcode && (
+                           <span className="text-[9px] font-mono leading-none text-slate-500 flex items-center gap-0.5">
+                             <Barcode size={10} className="text-slate-400" /> {product.barcode}
                            </span>
-                           <span className="text-[9px] font-mono text-slate-400">
-                             {product.barcode || ''}
-                           </span>
-                        </div>
+                         )}
                       </div>
                     </div>
                   </td>
                   <td>
-                    <span className="text-[10px] font-bold text-slate-600">
+                    <span className="text-[10px] font-extrabold text-slate-600 bg-slate-50 px-2 py-1 rounded-md border border-slate-200">
                       {categories.find(c => c.id === product.categoryId)?.name || 'N/A'}
                     </span>
                   </td>
-                  <td>
-                    <span className="text-[10px] font-mono text-slate-400">{product.sku}</span>
-                  </td>
-                  <td className="text-center px-2">
-                    <div className="flex items-center justify-center gap-2 group/qty">
+                  <td className="text-center px-1">
+                    <div className="flex items-center justify-center gap-1">
                       {canManageStock && (
                         <button 
+                          type="button"
                           onClick={() => handleQuickStock(product, -1)}
                           disabled={loading || product.stockQuantity <= 0}
-                          className="w-6 h-6 flex items-center justify-center rounded-full border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all opacity-0 group-hover/qty:opacity-100 disabled:opacity-0"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-300 text-slate-500 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 transition-all shadow-xs active:scale-94 disabled:opacity-20 disabled:pointer-events-none"
+                          title="Décrémenter stock"
                         >
-                          <Minus size={12} />
+                          <Minus size={11} className="stroke-[3]" />
                         </button>
                       )}
                       
-                      <span className={cn(
-                        "font-black text-sm min-w-[2.5rem]",
-                        stockStatus === 'out' ? "text-rose-600" : stockStatus === 'low' ? "text-amber-500" : "text-slate-800"
-                      )}>
-                        {Number(product.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} <span className="text-[10px] text-slate-400 font-normal">{product.unit || 'u'}</span>
+                      <div className="flex flex-col items-center justify-center min-w-[4rem] px-1 py-0.5 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className={cn(
+                          "font-mono font-black text-xs",
+                          stockStatus === 'out' ? "text-rose-600" : stockStatus === 'low' ? "text-amber-500" : "text-emerald-700"
+                        )}>
+                          {Number(product.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')}
+                        </span>
+                        <span className="text-[8px] text-slate-400 font-bold uppercase leading-none">
+                          {product.unit || 'u'}
+                        </span>
                         {product.sellInML && (
-                           <p className="text-[9px] text-indigo-500 font-bold block">
-                             ~ {(product.stockQuantity * (product.unitsPerRoll || 0)).toFixed(1)} ml
+                           <p className="text-[8px] text-indigo-600 font-black block leading-none mt-0.5">
+                             {(product.stockQuantity * (product.unitsPerRoll || 0)).toFixed(1)}m
                            </p>
                         )}
-                        {stockStatus === 'out' && (
-                          <span className="block text-[8px] font-black bg-rose-600 text-white px-1 mt-1 uppercase tracking-widest text-center rounded-sm">
-                            Rupture
-                          </span>
-                        )}
-                      </span>
+                      </div>
 
                       {canManageStock && (
                         <button 
+                          type="button"
                           onClick={() => handleQuickStock(product, 1)}
                           disabled={loading}
-                          className="w-6 h-6 flex items-center justify-center rounded-full border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 transition-all opacity-0 group-hover/qty:opacity-100 disabled:opacity-0"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-300 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-all shadow-xs active:scale-94 disabled:opacity-20"
+                          title="Incrémenter stock"
                         >
-                          <Plus size={12} />
+                          <Plus size={11} className="stroke-[3]" />
                         </button>
                       )}
                     </div>
                   </td>
-                  <td className="text-right font-black text-blue-600">
-                    {formatCurrency(product.sellingPrice)}
+                  <td>
+                    {stockStatus === 'ok' ? (
+                      <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-full">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                        En Stock
+                      </span>
+                    ) : stockStatus === 'low' ? (
+                      <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+                        <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                        Stock faible
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full">
+                        <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping" />
+                        Rupture
+                      </span>
+                    )}
                   </td>
-                  <td className="text-right font-bold text-slate-400 italic text-[11px]">
-                    {formatCurrency(product.purchasePrice)}
+                  <td className="text-right font-black text-[#7f54b3] text-xs font-mono">
+                    {formatCurrency(product.sellingPrice)} DA
+                  </td>
+                  <td className="text-right font-bold text-slate-500 text-[11px] font-mono">
+                    {formatCurrency(product.purchasePrice)} DA
                   </td>
                   <td className="text-center">
                         <div className="flex justify-center gap-2">
-                            {canManageStock && (
+                            {canPrint && (
                              <button 
                                onClick={() => {
                                  if (!product.barcode) {
@@ -818,7 +1001,7 @@ const Inventory: React.FC = () => {
                                <Printer size={16} />
                              </button>
                            )}
-                           {canManageStock && (
+                           {canEditProducts && (
                              <button 
                                onClick={() => handleEdit(product)} 
                                title="Modifier"
@@ -898,6 +1081,47 @@ const Inventory: React.FC = () => {
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Visuel du produit</label>
+              <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-3xl border border-dashed border-slate-200">
+                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center border border-slate-200 overflow-hidden shrink-0 shadow-sm">
+                  {photoBase64Value ? (
+                    <img src={photoBase64Value} alt="Visual" className="w-full h-full object-cover" />
+                  ) : (
+                    <Box size={24} className="text-[#7f54b3]" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex gap-2">
+                    <label className="px-4 py-2 bg-[#7f54b3] text-white hover:bg-[#6c449c] cursor-pointer text-xs font-black uppercase tracking-wider rounded-xl shadow-sm transition-all active:scale-95">
+                      Choisir une photo
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            compressAndSetPhoto(file);
+                          }
+                        }} 
+                      />
+                    </label>
+                    {photoBase64Value && (
+                      <button 
+                        type="button" 
+                        onClick={() => setValue('photoBase64', '')}
+                        className="px-4 py-2 border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600 text-xs font-black uppercase tracking-wider rounded-xl transition-all"
+                      >
+                        Supprimer
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2 font-bold uppercase select-none">Format JPEG/PNG. L'image est automatiquement optimisée pour les performances.</p>
+                </div>
+              </div>
+            </div>
+
             <div className="md:col-span-2">
               <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Nom du produit *</label>
               <input {...register('name')} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl outline-none focus:ring-2 focus:ring-slate-400 dark:text-white font-bold" />

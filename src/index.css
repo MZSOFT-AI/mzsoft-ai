@@ -6,20 +6,20 @@
 }
 
 :root {
-  --background: #f6f8fb;
-  --foreground: #23282d;
-  --primary: #0274be;
-  --secondary: #64748b;
-  --astra-blue: #0274be;
-  --astra-dark: #191e23;
-  --astra-border: #e2e8f0;
+  --background: #f1f2f3;
+  --foreground: #1e293b;
+  --primary: #714b67;
+  --secondary: #00a09d;
+  --astra-blue: #714b67;
+  --astra-dark: #212529;
+  --astra-border: #dee2e6;
 }
 
 :root.dark, .dark {
-  --background: #0b0f19;
+  --background: #090d16;
   --foreground: #f1f5f9;
-  --astra-blue: #0274be;
-  --astra-dark: #0b0f19;
+  --astra-blue: #714b67;
+  --astra-dark: #090d16;
   --astra-border: #1e293b;
 }
 

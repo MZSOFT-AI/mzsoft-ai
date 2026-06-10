@@ -35,7 +35,9 @@ import {
   Lock,
   MoreVertical,
   Ban,
-  UserCheck
+  UserCheck,
+  List,
+  Grid
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
@@ -45,14 +47,28 @@ import { cn, safeStringify, cleanObject } from '../lib/utils';
 import { notificationService } from '../services/notificationService';
 
 const DEFAULT_PERMISSIONS: UserPermissions = {
-  canManageStock: true,
-  canDeleteProducts: true,
-  canSell: true,
-  canProcessReturns: true,
-  canPerformInventory: true,
-  canManageExpenses: true,
-  canViewReports: true,
-  canManageUsers: false
+  canViewDashboard: true,
+  canViewProducts: true,
+  canAddProducts: false,
+  canEditProducts: false,
+  canDeleteProducts: false,
+  canManageCategories: false,
+  canManageStock: false,
+  canPerformInventory: false,
+  canManageSales: false,
+  canProcessReturns: false,
+  canManageCustomers: false,
+  canManageSuppliers: false,
+  canManageAccounting: false,
+  canManageExpenses: false,
+  canViewReports: false,
+  canExportData: false,
+  canPrint: false,
+  canManageUsers: false,
+  canManagePermissions: false,
+  canManageSettings: false,
+  canManageBackups: false,
+  canViewLogs: false
 };
 
 const Users: React.FC = () => {
@@ -65,6 +81,7 @@ const Users: React.FC = () => {
   const [userToDelete, setUserToDelete] = useState<UserData | null>(null);
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   // Permissions check
   const canManageUsers = true;
@@ -99,33 +116,210 @@ const Users: React.FC = () => {
   const getPresetPermissions = (role: UserData['role']): UserPermissions => {
     switch (role) {
       case 'superadmin':
-        return { ...DEFAULT_PERMISSIONS, canManageUsers: true };
-      case 'admin':
-        return { ...DEFAULT_PERMISSIONS, canManageUsers: false };
-      case 'manager':
         return {
-          canManageStock: true,
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: true,
+          canEditProducts: true,
           canDeleteProducts: true,
-          canSell: true,
-          canProcessReturns: true,
+          canManageCategories: true,
+          canManageStock: true,
           canPerformInventory: true,
+          canManageSales: true,
+          canProcessReturns: true,
+          canManageCustomers: true,
+          canManageSuppliers: true,
+          canManageAccounting: true,
           canManageExpenses: true,
           canViewReports: true,
-          canManageUsers: false
+          canExportData: true,
+          canPrint: true,
+          canManageUsers: true,
+          canManagePermissions: true,
+          canManageSettings: true,
+          canManageBackups: true,
+          canViewLogs: true
+        };
+      case 'admin':
+        return {
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: true,
+          canEditProducts: true,
+          canDeleteProducts: true,
+          canManageCategories: true,
+          canManageStock: true,
+          canPerformInventory: true,
+          canManageSales: true,
+          canProcessReturns: true,
+          canManageCustomers: true,
+          canManageSuppliers: true,
+          canManageAccounting: true,
+          canManageExpenses: true,
+          canViewReports: true,
+          canExportData: true,
+          canPrint: true,
+          canManageUsers: true,
+          canManagePermissions: false,
+          canManageSettings: true,
+          canManageBackups: true,
+          canViewLogs: true
+        };
+      case 'manager':
+      case 'gerant':
+        return {
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: true,
+          canEditProducts: true,
+          canDeleteProducts: false,
+          canManageCategories: true,
+          canManageStock: true,
+          canPerformInventory: true,
+          canManageSales: true,
+          canProcessReturns: true,
+          canManageCustomers: true,
+          canManageSuppliers: true,
+          canManageAccounting: true,
+          canManageExpenses: true,
+          canViewReports: true,
+          canExportData: true,
+          canPrint: true,
+          canManageUsers: false,
+          canManagePermissions: false,
+          canManageSettings: false,
+          canManageBackups: false,
+          canViewLogs: true
         };
       case 'vendeur':
         return {
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: false,
+          canEditProducts: false,
+          canDeleteProducts: false,
+          canManageCategories: false,
           canManageStock: false,
-          canDeleteProducts: true,
-          canSell: true,
-          canProcessReturns: false,
           canPerformInventory: false,
+          canManageSales: true,
+          canProcessReturns: true,
+          canManageCustomers: true,
+          canManageSuppliers: false,
+          canManageAccounting: false,
           canManageExpenses: false,
           canViewReports: false,
-          canManageUsers: false
+          canExportData: false,
+          canPrint: true,
+          canManageUsers: false,
+          canManagePermissions: false,
+          canManageSettings: false,
+          canManageBackups: false,
+          canViewLogs: false
+        };
+      case 'comptable':
+        return {
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: false,
+          canEditProducts: false,
+          canDeleteProducts: false,
+          canManageCategories: false,
+          canManageStock: false,
+          canPerformInventory: false,
+          canManageSales: false,
+          canProcessReturns: false,
+          canManageCustomers: true,
+          canManageSuppliers: true,
+          canManageAccounting: true,
+          canManageExpenses: true,
+          canViewReports: true,
+          canExportData: true,
+          canPrint: true,
+          canManageUsers: false,
+          canManagePermissions: false,
+          canManageSettings: false,
+          canManageBackups: false,
+          canViewLogs: true
+        };
+      case 'magasinier':
+        return {
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: true,
+          canEditProducts: true,
+          canDeleteProducts: false,
+          canManageCategories: true,
+          canManageStock: true,
+          canPerformInventory: true,
+          canManageSales: false,
+          canProcessReturns: false,
+          canManageCustomers: false,
+          canManageSuppliers: true,
+          canManageAccounting: false,
+          canManageExpenses: false,
+          canViewReports: false,
+          canExportData: true,
+          canPrint: true,
+          canManageUsers: false,
+          canManagePermissions: false,
+          canManageSettings: false,
+          canManageBackups: false,
+          canViewLogs: false
+        };
+      case 'employe':
+        return {
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: false,
+          canEditProducts: false,
+          canDeleteProducts: false,
+          canManageCategories: false,
+          canManageStock: false,
+          canPerformInventory: false,
+          canManageSales: false,
+          canProcessReturns: false,
+          canManageCustomers: false,
+          canManageSuppliers: false,
+          canManageAccounting: false,
+          canManageExpenses: false,
+          canViewReports: false,
+          canExportData: false,
+          canPrint: false,
+          canManageUsers: false,
+          canManagePermissions: false,
+          canManageSettings: false,
+          canManageBackups: false,
+          canViewLogs: false
+        };
+      case 'technicien':
+        return {
+          canViewDashboard: true,
+          canViewProducts: true,
+          canAddProducts: false,
+          canEditProducts: true,
+          canDeleteProducts: false,
+          canManageCategories: false,
+          canManageStock: true,
+          canPerformInventory: true,
+          canManageSales: false,
+          canProcessReturns: false,
+          canManageCustomers: false,
+          canManageSuppliers: false,
+          canManageAccounting: false,
+          canManageExpenses: false,
+          canViewReports: false,
+          canExportData: false,
+          canPrint: true,
+          canManageUsers: false,
+          canManagePermissions: false,
+          canManageSettings: false,
+          canManageBackups: false,
+          canViewLogs: false
         };
       default:
-        return { ...DEFAULT_PERMISSIONS, canManageUsers: false };
+        return {
+          ...DEFAULT_PERMISSIONS
+        };
     }
   };
 
@@ -428,31 +622,203 @@ const Users: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tighter uppercase flex items-center gap-2">
-            <ShieldCheck className="text-blue-600" size={28} />
+            <ShieldCheck className="text-[#7f54b3]" size={28} />
             Gestion des Utilisateurs
           </h1>
           <p className="text-slate-500 text-sm font-medium">Contrôlez les accès et les permissions de votre équipe</p>
         </div>
-        <Button onClick={() => handleOpenModal()} className="bg-slate-800 hover:bg-slate-900 text-white flex items-center gap-2 px-6">
-          <UserPlus size={18} />
-          Nouvel Utilisateur
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={cn(
+                "p-2 rounded-lg transition-all",
+                viewMode === 'list' 
+                  ? "bg-white text-[#7f54b3] shadow-xs font-black" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+              title="Vue Liste"
+            >
+              <List size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={cn(
+                "p-2 rounded-lg transition-all",
+                viewMode === 'grid' 
+                  ? "bg-white text-[#7f54b3] shadow-xs font-black" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+              title="Vue Grille"
+            >
+              <Grid size={18} />
+            </button>
+          </div>
+          <Button onClick={() => handleOpenModal()} className="bg-[#7f54b3] hover:bg-[#6c449c] text-white flex items-center gap-2 px-6 rounded-xl font-bold">
+            <UserPlus size={18} />
+            Nouvel Utilisateur
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar */}
       <div className="relative group">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#7f54b3] transition-colors" size={20} />
         <input 
           type="text" 
           placeholder="Rechercher par nom, email ou identifiant..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full h-14 pl-12 pr-4 bg-white border-2 border-slate-100 rounded-xl text-slate-700 font-bold focus:border-blue-500 outline-none transition-all shadow-sm"
+          className="w-full h-14 pl-12 pr-4 bg-white border-2 border-slate-100 rounded-xl text-slate-700 font-bold focus:border-[#7f54b3] outline-none transition-all shadow-sm"
         />
       </div>
 
-      {/* Users Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Users Container */}
+      {viewMode === 'list' ? (
+        <div className="overflow-x-auto border border-slate-200/80 bg-white rounded-2xl shadow-xs">
+          <table className="mzsoft-table w-full">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50">
+                <th className="px-6 py-4 text-left text-xs font-black uppercase tracking-wider text-slate-400 w-16">Visuel</th>
+                <th className="px-6 py-4 text-left text-xs font-black uppercase tracking-wider text-slate-400">Nom Complet</th>
+                <th className="px-6 py-4 text-left text-xs font-black uppercase tracking-wider text-slate-400">Identifiant / Mail</th>
+                <th className="px-6 py-4 text-left text-xs font-black uppercase tracking-wider text-slate-400">Rôle</th>
+                <th className="px-6 py-4 text-left text-xs font-black uppercase tracking-wider text-slate-400">Habilitations Clés</th>
+                <th className="px-6 py-4 text-left text-xs font-black uppercase tracking-wider text-slate-400">Statut</th>
+                <th className="px-6 py-4 text-center text-xs font-black uppercase tracking-wider text-slate-400 w-28">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-[#7f54b3]/5 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 border border-slate-200 overflow-hidden shadow-xs shrink-0">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt={user.displayName} className="w-full h-full object-cover" />
+                      ) : (
+                        <UserIcon size={18} className="text-[#7f54b3]" />
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-col">
+                      <span className="font-extrabold text-slate-800 text-xs uppercase tracking-tight leading-tight">{user.displayName}</span>
+                      {user.isLocalOnly && (
+                        <span className="text-[9px] font-black uppercase text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded mt-1.5 self-start">
+                          Connexion Locale
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-col font-mono text-xs text-slate-500">
+                      <span>{user.email || 'N/A'}</span>
+                      {user.username && (
+                        <span className="text-[10px] text-slate-400 mt-1 font-bold">Identifiant: {user.username}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={cn(
+                      "px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border",
+                      user.role === 'superadmin' ? "bg-purple-50 text-purple-700 border-purple-200" :
+                      user.role === 'admin' ? "bg-red-50 text-red-700 border-red-200" :
+                      (user.role === 'manager' || user.role === 'gerant') ? "bg-blue-50 text-blue-700 border-blue-200" :
+                      user.role === 'comptable' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                      user.role === 'magasinier' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                      user.role === 'technicien' ? "bg-cyan-50 text-cyan-700 border-cyan-200" :
+                      "bg-slate-50 text-slate-700 border-slate-200"
+                    )}>
+                      {user.role === 'superadmin' ? 'Super Admin' :
+                       user.role === 'admin' ? 'Admin' :
+                       user.role === 'gerant' ? 'Gérant' :
+                       user.role === 'manager' ? 'Gérant (ancien)' :
+                       user.role === 'vendeur' ? 'Vendeur' :
+                       user.role === 'comptable' ? 'Comptable' :
+                       user.role === 'magasinier' ? 'Magasinier' :
+                       user.role === 'employe' ? 'Employé' :
+                       user.role === 'technicien' ? 'Technicien' : user.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <span className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border",
+                        (user.permissions?.canManageSales || user.permissions?.canSell)
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                          : "bg-slate-50 text-slate-300 border-slate-200"
+                      )}>
+                        Caisse
+                      </span>
+                      <span className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border",
+                        user.permissions?.canManageStock 
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                          : "bg-slate-50 text-slate-300 border-slate-200"
+                      )}>
+                        Stock
+                      </span>
+                      <span className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border",
+                        user.permissions?.canViewReports 
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                          : "bg-slate-50 text-slate-300 border-slate-200"
+                      )}>
+                        Compta
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {user.status === 'inactive' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                        Inactif
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Actif
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <div className="flex justify-center gap-1.5">
+                      <button 
+                        type="button"
+                        onClick={() => handleOpenModal(user)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200 text-slate-500 hover:text-[#7f54b3] hover:border-[#7f54b3] hover:bg-[#7f54b3]/5 transition-all active:scale-95"
+                        disabled={user.role === 'superadmin' && !isSuperAdmin}
+                        title="Modifier"
+                      >
+                        <Edit2 size={14} className="stroke-[2.5]" />
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => { setUserToDelete(user); setIsDeleteModalOpen(true); }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all active:scale-95"
+                        disabled={user.id === currentUser?.id || (user.role === 'superadmin' && !isSuperAdmin)}
+                        title="Supprimer / Désactiver"
+                      >
+                        <Trash2 size={14} className="stroke-[2.5]" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-center py-8 text-slate-400 font-bold uppercase text-xs tracking-wider">
+                    Aucun collaborateur trouvé
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredUsers.map((user) => (
             <div
               key={user.id}
@@ -476,10 +842,21 @@ const Users: React.FC = () => {
                         "px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider",
                         user.role === 'superadmin' ? "bg-purple-100 text-purple-600" :
                         user.role === 'admin' ? "bg-red-100 text-red-600" :
-                        user.role === 'manager' ? "bg-blue-100 text-blue-600" :
+                        (user.role === 'manager' || user.role === 'gerant') ? "bg-blue-100 text-blue-600" :
+                        user.role === 'comptable' ? "bg-emerald-100 text-emerald-600" :
+                        user.role === 'magasinier' ? "bg-amber-100 text-amber-600" :
+                        user.role === 'technicien' ? "bg-cyan-100 text-cyan-600" :
                         "bg-slate-100 text-slate-600"
                       )}>
-                        {user.role}
+                        {user.role === 'superadmin' ? 'Super Admin' :
+                         user.role === 'admin' ? 'Admin' :
+                         user.role === 'gerant' ? 'Gérant' :
+                         user.role === 'manager' ? 'Gérant (ancien)' :
+                         user.role === 'vendeur' ? 'Vendeur' :
+                         user.role === 'comptable' ? 'Comptable' :
+                         user.role === 'magasinier' ? 'Magasinier' :
+                         user.role === 'employe' ? 'Employé' :
+                         user.role === 'technicien' ? 'Technicien' : user.role}
                       </span>
                       {user.status === 'inactive' && (
                         <span className="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
@@ -524,7 +901,7 @@ const Users: React.FC = () => {
                 
                 <div className="pt-3 border-t border-slate-50 grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <CheckCircle2 size={12} className={user.permissions?.canSell ? "text-emerald-500" : "text-slate-200"} />
+                    <CheckCircle2 size={12} className={(user.permissions?.canManageSales || user.permissions?.canSell) ? "text-emerald-500" : "text-slate-200"} />
                     Ventes
                   </div>
                   <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -539,11 +916,12 @@ const Users: React.FC = () => {
               </div>
             </div>
           ))}
-      </div>
+        </div>
+      )}
 
       {loading && filteredUsers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7f54b3] mb-4"></div>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Chargement des utilisateurs...</p>
         </div>
       )}
@@ -560,7 +938,7 @@ const Users: React.FC = () => {
             >
               <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
                 <h2 className="text-xl font-black text-slate-800 tracking-tighter uppercase flex items-center gap-2">
-                  {editingUser ? <Edit2 size={20} className="text-blue-600" /> : <UserPlus size={20} className="text-blue-600" />}
+                  {editingUser ? <Edit2 size={20} className="text-[#7f54b3]" /> : <UserPlus size={20} className="text-[#7f54b3]" />}
                   {editingUser ? 'Modifier l\'utilisateur' : 'Nouvel Utilisateur'}
                 </h2>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
@@ -583,7 +961,7 @@ const Users: React.FC = () => {
                         type="text" 
                         value={formData.displayName}
                         onChange={(e) => setFormData({...formData, displayName: e.target.value})}
-                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
                         required
                         placeholder="Ex: Mohamed Amine"
                       />
@@ -600,13 +978,18 @@ const Users: React.FC = () => {
                             permissions: getPresetPermissions(newRole)
                           });
                         }}
-                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
                         disabled={!isSuperAdmin && formData.role === 'superadmin'}
                       >
-                        <option value="vendeur">Vendeur (Caisse)</option>
-                        <option value="manager">Manager</option>
-                        <option value="admin">Administrateur</option>
-                        {isSuperAdmin && <option value="superadmin">Super Admin</option>}
+                        <option value="superadmin">Super Admin</option>
+                        <option value="admin">Admin</option>
+                        <option value="gerant">Gérant</option>
+                        <option value="manager">Manager / Gérant (ancien)</option>
+                        <option value="vendeur">Vendeur</option>
+                        <option value="comptable">Comptable</option>
+                        <option value="magasinier">Magasinier</option>
+                        <option value="employe">Employé</option>
+                        <option value="technicien">Technicien</option>
                       </select>
                     </div>
                   </div>
@@ -617,7 +1000,7 @@ const Users: React.FC = () => {
                       <select 
                         value={formData.status}
                         onChange={(e) => setFormData({...formData, status: e.target.value as UserData['status']})}
-                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
                       >
                         <option value="active">Actif</option>
                         <option value="inactive">Inactif (Bloqué)</option>
@@ -641,7 +1024,7 @@ const Users: React.FC = () => {
                       onClick={() => setFormData({...formData, isLocalOnly: !formData.isLocalOnly})}
                       className={cn(
                         "px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        !formData.isLocalOnly ? "bg-blue-100 text-blue-600 ring-2 ring-blue-200" : "bg-slate-100 text-slate-400"
+                        !formData.isLocalOnly ? "bg-[#7f54b3]/10 text-[#7f54b3] ring-2 ring-[#7f54b3]/25" : "bg-slate-100 text-slate-400"
                       )}
                     >
                       Connexion Google
@@ -677,42 +1060,45 @@ const Users: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <div className="space-y-4 p-4 bg-[#7f54b3]/5 rounded-xl border border-[#7f54b3]/10">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black uppercase text-blue-700 ml-1">Adresse Email</label>
+                          <label className="text-[10px] font-black uppercase text-[#7f54b3] ml-1">Adresse Email</label>
                           <input 
                             type="email" 
                             value={formData.email}
                             onChange={(e) => setFormData({...formData, email: e.target.value})}
-                            className="w-full h-11 px-4 bg-white border border-blue-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                            className="w-full h-11 px-4 bg-white border border-[#7f54b3]/20 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
                             required={!formData.isLocalOnly}
                             placeholder="exemple@gmail.com"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black uppercase text-blue-700 ml-1">
+                          <label className="text-[10px] font-black uppercase text-[#7f54b3] ml-1">
                             {editingUser ? 'Nouveau Mot de Passe (Optionnel)' : 'Mot de Passe (Optionnel)'}
                           </label>
                           <input 
                             type="password" 
                             value={formData.localPassword}
                             onChange={(e) => setFormData({...formData, localPassword: e.target.value})}
-                            className="w-full h-11 px-4 bg-white border border-blue-200 rounded-lg text-sm font-bold focus:border-blue-500 outline-none transition-all"
+                            className="w-full h-11 px-4 bg-white border border-[#7f54b3]/20 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
                             placeholder="••••••••"
                           />
                         </div>
                       </div>
-                      <p className="text-[9px] text-blue-400 font-bold uppercase mt-1">L'utilisateur pourra se connecter via son compte Google ou directement avec son email et mot de passe.</p>
+                      <p className="text-[9px] text-[#7f54b3]/70 font-bold uppercase mt-1">L'utilisateur pourra se connecter via son compte Google ou directement avec son email et mot de passe.</p>
                     </div>
                   )}
                 </div>
 
                 {/* Permissions Section */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-slate-400 mb-2">
-                    <Shield size={16} />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Permissions & Accès</span>
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <div className="flex flex-col gap-1 mb-2">
+                    <div className="flex items-center gap-2 text-[#7f54b3]">
+                      <Shield size={16} />
+                      <span className="text-[11px] font-black uppercase tracking-[0.2em]">Autorisations Spécifiques</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-semibold">Personnalisez finement les droits d'accès pour cet utilisateur. Les modifications de permissions s'appliquent en temps réel.</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -727,18 +1113,32 @@ const Users: React.FC = () => {
                         )}
                       >
                         <span className="text-[10px] font-black uppercase tracking-wider">
-                          {key === 'canManageStock' ? 'Gérer Stock' :
-                           key === 'canDeleteProducts' ? 'Supprimer Produits' :
-                           key === 'canSell' ? 'Effectuer Ventes' :
-                           key === 'canProcessReturns' ? 'Gérer Retours' :
-                           key === 'canPerformInventory' ? 'Faire Inventaire' :
-                           key === 'canManageExpenses' ? 'Gérer Dépenses' :
+                          {key === 'canViewDashboard' ? 'Tableau de bord' :
+                           key === 'canViewProducts' ? 'Produits (Voir)' :
+                           key === 'canAddProducts' ? 'Produits (Ajouter)' :
+                           key === 'canEditProducts' ? 'Produits (Modifier)' :
+                           key === 'canDeleteProducts' ? 'Produits (Supprimer)' :
+                           key === 'canManageCategories' ? 'Catégories' :
+                           key === 'canManageStock' ? 'Stock & Inventaire' :
+                           key === 'canPerformInventory' ? 'Faire l\'inventaire' :
+                           key === 'canManageSales' ? 'Ventes & Retours' :
+                           key === 'canProcessReturns' ? 'Gérer les retours' :
+                           key === 'canManageCustomers' ? 'Clients' :
+                           key === 'canManageSuppliers' ? 'Fournisseurs' :
+                           key === 'canManageAccounting' ? 'Comptabilité' :
+                           key === 'canManageExpenses' ? 'Dépenses' :
+                           key === 'canViewReports' ? 'Rapports' :
+                           key === 'canExportData' ? 'Export PDF / Excel' :
+                           key === 'canPrint' ? 'Impression' :
                            key === 'canManageUsers' ? 'Gérer Utilisateurs' :
-                           key === 'canViewReports' ? 'Voir Rapports' : key}
+                           key === 'canManagePermissions' ? 'Permissions (Admin)' :
+                           key === 'canManageSettings' ? 'Paramètres' :
+                           key === 'canManageBackups' ? 'Sauvegardes' :
+                           key === 'canViewLogs' ? 'Journal d\'activité' : key}
                         </span>
                         <div className={cn(
                           "w-5 h-5 rounded-full flex items-center justify-center transition-all",
-                          formData.permissions[key as keyof UserPermissions] ? "bg-blue-500 scale-110" : "bg-slate-200"
+                          formData.permissions[key as keyof UserPermissions] ? "bg-[#7f54b3] scale-110" : "bg-slate-200"
                         )}>
                           {formData.permissions[key as keyof UserPermissions] && <CheckCircle2 size={12} />}
                         </div>
@@ -767,7 +1167,7 @@ const Users: React.FC = () => {
                   <Button 
                     type="submit" 
                     disabled={loading}
-                    className="flex-[2] h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase text-xs tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95"
+                    className="flex-[2] h-12 bg-[#7f54b3] hover:bg-[#6c449c] text-white rounded-xl font-black uppercase text-xs tracking-widest shadow-lg shadow-[#7f54b3]/20 transition-all active:scale-95"
                   >
                     {loading ? (
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>

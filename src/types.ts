@@ -7,14 +7,29 @@ export interface BaseEntity {
 }
 
 export interface UserPermissions {
-  canManageStock: boolean;
+  canViewDashboard: boolean;
+  canViewProducts: boolean;
+  canAddProducts: boolean;
+  canEditProducts: boolean;
   canDeleteProducts: boolean;
-  canSell: boolean;
-  canProcessReturns: boolean;
+  canManageCategories: boolean;
+  canManageStock: boolean;
   canPerformInventory: boolean;
+  canManageSales: boolean;
+  canProcessReturns: boolean;
+  canManageCustomers: boolean;
+  canManageSuppliers: boolean;
+  canManageAccounting: boolean;
   canManageExpenses: boolean;
   canViewReports: boolean;
+  canExportData: boolean;
+  canPrint: boolean;
   canManageUsers: boolean;
+  canManagePermissions: boolean;
+  canManageSettings: boolean;
+  canManageBackups: boolean;
+  canViewLogs: boolean;
+  canSell?: boolean;
 }
 
 export interface UserData extends BaseEntity {
@@ -22,7 +37,7 @@ export interface UserData extends BaseEntity {
   username?: string;
   localPassword?: string;
   displayName: string;
-  role: 'superadmin' | 'admin' | 'manager' | 'vendeur';
+  role: 'superadmin' | 'admin' | 'manager' | 'gerant' | 'vendeur' | 'comptable' | 'magasinier' | 'employe' | 'technicien';
   uid?: string;
   photoURL?: string;
   lastLogoutAt?: any;
@@ -51,6 +66,7 @@ export interface Product extends BaseEntity {
   sellInML?: boolean;
   unitsPerRoll?: number;
   pricePerML?: number;
+  photoBase64?: string;
 }
 
 export interface StockMovement extends BaseEntity {

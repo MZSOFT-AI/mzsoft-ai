@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { cn, cleanObject } from '../lib/utils';
+import { cn, cleanObject, getSafeDate } from '../lib/utils';
 import { excelService } from '../services/excelService';
 import PromptModal from '../components/ui/PromptModal';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
@@ -128,7 +128,7 @@ export default function StockMovements() {
       const data = filteredMovements.map(m => {
         const typeInfo = STOCK_TYPES[m.type] || { label: m.type };
         const isPositive = m.newStock > m.previousStock;
-        const formattedDate = m.createdAt ? format((m.createdAt as any)?.toDate ? (m.createdAt as any).toDate() : (m.createdAt instanceof Date ? m.createdAt : new Date()), 'dd/MM/yyyy HH:mm') : '-';
+        const formattedDate = m.createdAt ? format(getSafeDate(m.createdAt), 'dd/MM/yyyy HH:mm') : '-';
         return {
           date: formattedDate,
           productName: m.productName || '-',
@@ -235,7 +235,7 @@ export default function StockMovements() {
               return (
                 <tr key={m.id} className="hover:bg-slate-50 transition-colors border-l-2 border-l-transparent hover:border-l-blue-500 group">
                   <td className="text-xs font-bold text-slate-400 italic">
-                    {m.createdAt ? format((m.createdAt as any)?.toDate ? (m.createdAt as any).toDate() : (m.createdAt instanceof Date ? m.createdAt : new Date()), 'dd/MM HH:mm') : '-'}
+                    {m.createdAt ? format(getSafeDate(m.createdAt), 'dd/MM HH:mm') : '-'}
                   </td>
                   <td className="font-bold text-slate-800 text-xs">
                     <div className="flex flex-col">

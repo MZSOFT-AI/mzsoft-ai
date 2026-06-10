@@ -6,7 +6,7 @@ import { collection, onSnapshot, query, orderBy, limit, where, getDocs } from 'f
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Sale, Product, AppNotification } from '../types';
-import { formatCurrency, cn, safeStringify } from '../lib/utils';
+import { formatCurrency, cn, safeStringify, getSafeDate } from '../lib/utils';
 import { excelService } from '../services/excelService';
 import { 
   TrendingUp, 
@@ -58,7 +58,7 @@ const Dashboard: React.FC = () => {
 
   const canViewFinancials = hasPermission('canViewReports');
   const canManageStock = hasPermission('canManageStock');
-  const canSell = hasPermission('canSell');
+  const canSell = hasPermission('canManageSales');
 
   React.useEffect(() => {
     if (isAdmin) {
@@ -154,7 +154,7 @@ const Dashboard: React.FC = () => {
 
     sales.forEach(sale => {
       if (sale.createdAt) {
-        const date = (sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : (sale.createdAt ? new Date(sale.createdAt as any) : new Date());
+        const date = getSafeDate(sale.createdAt);
         const dayName = format(date, 'eee', { locale: fr });
         if (dailyData[dayName] !== undefined) {
           dailyData[dayName] += (sale.totalAmount || 0);
@@ -179,7 +179,7 @@ const Dashboard: React.FC = () => {
 
     sales.forEach(sale => {
       if (sale.createdAt) {
-        const date = (sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : (sale.createdAt ? new Date(sale.createdAt as any) : new Date());
+        const date = getSafeDate(sale.createdAt);
         const monthLabel = format(date, 'MMM yy', { locale: fr });
         if (monthlyData[monthLabel] !== undefined) {
           monthlyData[monthLabel] += (sale.totalAmount || 0);
@@ -272,7 +272,7 @@ const Dashboard: React.FC = () => {
                           notif.priority === 'high' ? 'MOYEN' : 'FAIBLE'}
                        </span>
                        <span className="text-[10px] text-slate-400 font-bold">
-                         {notif.createdAt ? format((notif.createdAt as any).toDate ? (notif.createdAt as any).toDate() : new Date(), 'dd/MM HH:mm') : '-'}
+                         {notif.createdAt ? format(getSafeDate(notif.createdAt), 'dd/MM HH:mm') : '-'}
                        </span>
                     </div>
                     <p className="text-sm font-black text-slate-900 mb-1 leading-tight">{notif.title}</p>
@@ -404,7 +404,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-800 truncate">{sale.customerName || 'Client de passage'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">{sale.createdAt ? format((sale.createdAt as any)?.toDate ? (sale.createdAt as any).toDate() : new Date(sale.createdAt as any), 'HH:mm', { locale: fr }) : '-'}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">{sale.createdAt ? format(getSafeDate(sale.createdAt), 'HH:mm', { locale: fr }) : '-'}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-black text-emerald-600">+{formatCurrency(sale.totalAmount)}</p>

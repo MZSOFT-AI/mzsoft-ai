@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { collection, onSnapshot, query, orderBy, limit, doc, runTransaction, increment, serverTimestamp, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
-import { cleanObject, formatCurrency, cn } from '../lib/utils';
+import { cleanObject, formatCurrency, cn, getSafeDate } from '../lib/utils';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { pdfService } from '../services/pdfService';
 import { Badge } from '../components/ui/Badge';
@@ -18,7 +18,11 @@ import PromptModal from '../components/ui/PromptModal';
 import { useNotification } from '../context/NotificationContext';
 
 export default function SalesHistory() {
-  const { user, userData, isAdmin, hasPermission } = useAuth();
+  const { user, userData, isAdmin, isSuperAdmin, hasPermission } = useAuth();
+  const canExport = hasPermission('canExportData');
+  const canPrint = hasPermission('canPrint');
+  const canDelete = hasPermission('canDeleteProducts');
+  const canProcessReturns = hasPermission('canProcessReturns');
   const { showToast } = useNotification();
   const location = useLocation();
   const [sales, setSales] = useState<any[]>([]);
@@ -40,6 +44,7 @@ export default function SalesHistory() {
   const [saleToDelete, setSaleToDelete] = useState<any | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [currentGroupPage, setCurrentGroupPage] = useState(1);
   const groupsPerPage = 5;
 
@@ -50,13 +55,17 @@ export default function SalesHistory() {
 
   const confirmDeleteSale = async () => {
     if (!saleToDelete) return;
+    setIsDeleting(true);
     try {
       await deleteDoc(doc(db, 'sales', saleToDelete.id));
       showToast("Vente supprimée de l'historique avec succès", "success");
-      setIsDeleteModalOpen(false);
       setSaleToDelete(null);
+      setIsDeleteModalOpen(false);
     } catch (err: any) {
-      showToast("Erreur lors de la suppression de la vente", "error");
+      console.error("Failed to delete sale:", err);
+      showToast("Erreur lors de la suppression de la vente: " + (err.message || "Permissions insuffisantes"), "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -66,21 +75,22 @@ export default function SalesHistory() {
   };
 
   const confirmBulkDeleteSales = async () => {
+    setIsDeleting(true);
     try {
       await Promise.all(selectedSaleIds.map(id => deleteDoc(doc(db, 'sales', id))));
       showToast(`${selectedSaleIds.length} documents / ventes supprimés`, "success");
       setSelectedSaleIds([]);
-    } catch (err: any) {
-      showToast("Erreur lors de la suppression groupée de ventes", "error");
-    } finally {
       setIsBulkDeleteModalOpen(false);
+    } catch (err: any) {
+      console.error("Failed to bulk delete sales:", err);
+      showToast("Erreur lors de la suppression groupée: " + (err.message || "Permissions insuffisantes"), "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   const [showSearchById, setShowSearchById] = useState(false);
   const [ticketIdQuery, setTicketIdQuery] = useState('');
-
-  const canProcessReturns = hasPermission('canProcessReturns');
 
   const findTicketById = () => {
     if (!ticketIdQuery.trim()) return;
@@ -434,12 +444,7 @@ export default function SalesHistory() {
     return true;
   });
 
-  const getSafeDate = (dateField: any) => {
-    if (!dateField) return new Date();
-    if (typeof dateField.toDate === 'function') return dateField.toDate();
-    const d = new Date(dateField);
-    return isNaN(d.getTime()) ? new Date() : d;
-  };
+
 
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
 
@@ -581,12 +586,16 @@ export default function SalesHistory() {
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Audit des Ventes & Transactions</p>
         </div>
         <div className="flex gap-2 mt-4 md:mt-0">
-           <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={() => setShowSearchById(true)}>
-             <RotateCcw size={16} className="mr-2" /> Effectuer un Retour
-           </Button>
-           <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" onClick={handleExportSalesExcel}>
-             <Download size={16} className="mr-2" /> Export Excel Pro
-           </Button>
+           {canProcessReturns && (
+             <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={() => setShowSearchById(true)}>
+               <RotateCcw size={16} className="mr-2" /> Effectuer un Retour
+             </Button>
+           )}
+           {canExport && (
+             <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" onClick={handleExportSalesExcel}>
+               <Download size={16} className="mr-2" /> Export Excel Pro
+             </Button>
+           )}
            <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase" onClick={() => window.location.reload()}>
              <History size={16} className="mr-2 text-slate-400" /> Journal
            </Button>
@@ -884,21 +893,23 @@ export default function SalesHistory() {
                     <thead>
                       <tr>
                         <th className="pl-6 w-12 text-center">
-                          <input 
-                            type="checkbox"
-                            checked={groupData.sales.length > 0 && groupData.sales.every((s: any) => selectedSaleIds.includes(s.id))}
-                            onChange={(e) => {
-                              const groupIds = groupData.sales.map((s: any) => s.id);
-                              if (e.target.checked) {
-                                // Add all groupIds that are not already selected
-                                setSelectedSaleIds(prev => [...new Set([...prev, ...groupIds])]);
-                              } else {
-                                // Remove groupIds from selectedSaleIds
-                                setSelectedSaleIds(prev => prev.filter(id => !groupIds.includes(id)));
-                              }
-                            }}
-                            className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
-                          />
+                          {(isAdmin || isSuperAdmin) && (
+                            <input 
+                              type="checkbox"
+                              checked={groupData.sales.length > 0 && groupData.sales.every((s: any) => selectedSaleIds.includes(s.id))}
+                              onChange={(e) => {
+                                const groupIds = groupData.sales.map((s: any) => s.id);
+                                if (e.target.checked) {
+                                  // Add all groupIds that are not already selected
+                                  setSelectedSaleIds(prev => [...new Set([...prev, ...groupIds])]);
+                                } else {
+                                  // Remove groupIds from selectedSaleIds
+                                  setSelectedSaleIds(prev => prev.filter(id => !groupIds.includes(id)));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                            />
+                          )}
                         </th>
                         <th>Instant</th>
                         <th>Type</th>
@@ -915,18 +926,20 @@ export default function SalesHistory() {
                       {groupData.sales.map((sale: any) => (
                         <tr key={sale.id} className="hover:bg-blue-50/50 transition-colors">
                           <td className="pl-6 text-center w-12">
-                            <input 
-                              type="checkbox"
-                              checked={selectedSaleIds.includes(sale.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedSaleIds(prev => [...prev, sale.id]);
-                                } else {
-                                  setSelectedSaleIds(prev => prev.filter(id => id !== sale.id));
-                                }
-                              }}
-                              className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
-                            />
+                            {(isAdmin || isSuperAdmin) && (
+                              <input 
+                                type="checkbox"
+                                checked={selectedSaleIds.includes(sale.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedSaleIds(prev => [...prev, sale.id]);
+                                  } else {
+                                    setSelectedSaleIds(prev => prev.filter(id => id !== sale.id));
+                                  }
+                                }}
+                                className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                              />
+                            )}
                           </td>
                           <td className="text-xs text-slate-400 italic">
                             {format(getSafeDate(sale.createdAt), 'HH:mm')}
@@ -977,9 +990,11 @@ export default function SalesHistory() {
                               <button onClick={() => setSelectedSale(sale)} className="p-1.5 text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 hover:bg-slate-50" title="Détails / Retour">
                                 <Eye size={14} />
                               </button>
-                              <button onClick={() => handleDeleteSale(sale)} className="p-1.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50" title="Supprimer de l'Historique">
-                                <Trash2 size={14} />
-                              </button>
+                              {(isAdmin || isSuperAdmin) && (
+                                <button onClick={() => handleDeleteSale(sale)} className="p-1.5 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-200 hover:bg-rose-50" title="Supprimer de l'Historique">
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1186,6 +1201,7 @@ export default function SalesHistory() {
         message={`Êtes-vous sûr de vouloir supprimer définitivement cette vente de l'historique ? Cette action est irréversible.`}
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
 
       <ConfirmationModal
@@ -1196,6 +1212,7 @@ export default function SalesHistory() {
         message={`Êtes-vous sûr de vouloir supprimer définitivement ces ${selectedSaleIds.length} documents / ventes de l'historique ? Cette action est irréversible.`}
         confirmText="Supprimer"
         variant="danger"
+        isLoading={isDeleting}
       />
     </div>
   );

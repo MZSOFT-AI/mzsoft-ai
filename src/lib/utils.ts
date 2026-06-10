@@ -221,3 +221,58 @@ export function parseFirestoreError(error: any): { error: string, path?: string,
     return defaultError;
   }
 }
+
+/**
+ * Safely parse any date value (Timestamp, Date, strings, DD/MM/YYYY) without throwing RangeError
+ */
+export function getSafeDate(dateField: any): Date {
+  if (!dateField) return new Date();
+  
+  // If it's a Firestore Timestamp or has .toDate method
+  if (typeof dateField === 'object' && dateField !== null) {
+    if (typeof dateField.toDate === 'function') {
+      try {
+        const d = dateField.toDate();
+        if (d && !isNaN(d.getTime())) return d;
+      } catch {}
+    }
+    if (typeof dateField.seconds === 'number') {
+      const d = new Date(dateField.seconds * 1000);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  // If it's already a Date
+  if (dateField instanceof Date) {
+    return isNaN(dateField.getTime()) ? new Date() : dateField;
+  }
+
+  // If it's a string, try parsing it
+  if (typeof dateField === 'string') {
+    const trimmed = dateField.trim();
+    if (!trimmed) return new Date();
+
+    // Check for DD/MM/YYYY or DD/MM/YYYY HH:mm
+    const dmYRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
+    const match = trimmed.match(dmYRegex);
+    if (match) {
+      const day = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10) - 1; // 0-based month
+      const year = parseInt(match[3], 10);
+      const hours = match[4] ? parseInt(match[4], 10) : 0;
+      const minutes = match[5] ? parseInt(match[5], 10) : 0;
+      const seconds = match[6] ? parseInt(match[6], 10) : 0;
+      const d = new Date(year, month, day, hours, minutes, seconds);
+      if (!isNaN(d.getTime())) return d;
+    }
+    
+    // Check if it's formatted as 'YYYY-MM-DD' or similar
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Fallback for numbers (timestamps in milliseconds) or anything else
+  const d = new Date(dateField);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
