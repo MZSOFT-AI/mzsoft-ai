@@ -6,16 +6,14 @@ import { collection, onSnapshot, query, orderBy, limit, where, getDocs } from 'f
 import { db } from '../firebase/config';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { Sale, Product, AppNotification } from '../types';
-import { formatCurrency, cn, safeStringify, getSafeDate } from '../lib/utils';
+import { formatCurrency, cn, getSafeDate } from '../lib/utils';
 import { excelService } from '../services/excelService';
 import { 
   TrendingUp, 
-  Box, 
   ShoppingCart, 
   Plus,
   RefreshCw,
   Users,
-  LayoutGrid,
   Calendar,
   Package,
   AlertTriangle,
@@ -47,7 +45,7 @@ const getMillis = (val: any): number => {
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, userData, isAdmin, hasPermission } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
   const { markAsRead, markAllAsRead } = useNotification();
   
   const [sales, setSales] = React.useState<Sale[]>([]);
@@ -58,7 +56,6 @@ const Dashboard: React.FC = () => {
 
   const canViewFinancials = hasPermission('canViewReports');
   const canManageStock = hasPermission('canManageStock');
-  const canSell = hasPermission('canManageSales');
 
   React.useEffect(() => {
     if (isAdmin) {
@@ -80,7 +77,6 @@ const Dashboard: React.FC = () => {
     if (!user) return;
     const currentUid = user.uid;
 
-    // Sales query - only show user's sales if not admin or doesn't have report permission
     const salesBaseQuery = collection(db, 'sales');
     const salesQ = (isAdmin || canViewFinancials)
       ? query(salesBaseQuery, orderBy('createdAt', 'desc'), limit(500))
@@ -95,12 +91,10 @@ const Dashboard: React.FC = () => {
       setLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
-    // Products query
     getDocs(query(collection(db, 'products'))).then((snap) => {
       setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
     }).catch(err => console.error("Error loading products:", err));
 
-    // Customers query
     getDocs(query(collection(db, 'customers'))).then((snap) => {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }).catch(err => console.error("Error loading customers:", err));
@@ -169,7 +163,6 @@ const Dashboard: React.FC = () => {
     const monthlyData: Record<string, number> = {};
     const today = new Date();
     
-    // Generate last 12 months labels
     const last12Months = Array.from({ length: 12 }, (_, i) => {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
       return format(d, 'MMM yy', { locale: fr });
@@ -217,97 +210,97 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 md:px-6 py-6 font-sans bg-[#F9FAFB]">
       {/* ERP Header */}
-      <div className="bg-white border border-slate-200 p-6 flex flex-col md:flex-row justify-between items-center shadow-sm">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xs">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Tableau de Bord Administratif</h1>
-          <div className="flex items-center gap-2 text-slate-500 mt-1">
-             <Calendar size={14} className="text-blue-500" />
-             <span className="text-[10px] font-black uppercase tracking-widest">{format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}</span>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight leading-tight">Tableau de Bord Principal</h1>
+          <div className="flex items-center gap-2 text-slate-500 mt-1.5">
+             <Calendar size={14} className="text-[#0066FF]" />
+             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}</span>
           </div>
         </div>
-        <div className="flex gap-2 mt-4 md:mt-0">
-           <Button variant="outline" size="sm" className="h-10 text-xs font-bold uppercase border-emerald-200 bg-emerald-50 text-emerald-700" onClick={handleExportDashboard}>
-             <TrendingUp size={16} className="mr-2" /> Rapport Excel Pro
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full md:w-auto">
+           <Button variant="outline" size="sm" className="h-10 text-xs font-bold uppercase transition-all duration-200 border-[#0066FF]/20 bg-blue-50/20 text-[#0066FF] flex-1 sm:flex-initial justify-center rounded-xl hover:bg-slate-50 hover:shadow-xs" onClick={handleExportDashboard}>
+             <TrendingUp size={16} className="mr-2 shrink-0" /> Rapport Excel Pro
            </Button>
-           <Button variant="outline" size="sm" className="h-10 text-xs font-bold uppercase" onClick={() => window.location.reload()}>
-             <RefreshCw size={16} className="mr-2 text-slate-400" /> Rafraîchir
+           <Button variant="outline" size="sm" className="h-10 text-xs font-bold uppercase transition-all duration-200 border-slate-200 bg-white text-slate-700 flex-1 sm:flex-initial justify-center rounded-xl hover:bg-slate-50 hover:shadow-xs" onClick={() => window.location.reload()}>
+             <RefreshCw size={16} className="mr-2 text-slate-400 shrink-0" /> Rafraîchir
            </Button>
-           <Button size="sm" className="h-10 text-xs font-bold uppercase bg-emerald-600 hover:bg-emerald-700" onClick={() => navigate('/pos')}>
-             <Plus size={16} className="mr-2" /> Nouvelle Vente
+           <Button size="sm" className="h-10 text-xs font-bold uppercase transition-all duration-200 bg-[#0066FF] hover:bg-[#0055DD] text-white flex-1 sm:flex-initial justify-center rounded-xl shadow-sm hover:shadow-md" onClick={() => navigate('/pos')}>
+             <Plus className="mr-2 shrink-0" /> Caisse POS
            </Button>
         </div>
       </div>
-      {/* Notifications Section for Admins - New Red Design */}
+
+      {/* Notifications Section - Premium Alert Design */}
       {isAdmin && notifications.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-xl border-l-[6px] border-rose-600 bg-rose-50/50 shadow-sm animate-pulse-slow">
-          <div className="flex flex-col md:flex-row justify-between items-center px-6 py-4 gap-4">
+        <div className="mb-6 overflow-hidden rounded-2xl border border-rose-200 bg-rose-50/20 shadow-xs">
+          <div className="flex flex-col md:flex-row justify-between items-center px-6 py-4 gap-4 border-b border-rose-100">
             <div className="flex items-center gap-3">
-               <AlertCircle className="text-rose-600" size={24} />
-               <h2 className="text-lg font-black text-rose-900 uppercase tracking-tight">
-                 Alertes Critiques ({notifications.length})
+               <AlertCircle className="text-rose-600 animate-pulse" size={20} />
+               <h2 className="text-sm font-black text-rose-900 uppercase tracking-tight">
+                 Alertes de Stock Critique ({notifications.length})
                </h2>
             </div>
             <button 
               onClick={() => markAllAsRead()} 
-              className="text-[11px] font-black uppercase text-rose-600 hover:text-rose-800 underline underline-offset-4 tracking-widest transition-colors"
+              className="text-[10px] font-black uppercase text-rose-600 hover:text-rose-800 underline underline-offset-4 tracking-widest transition-colors"
             >
               Tout marquer comme lu
             </button>
           </div>
 
-          <div className="p-6 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-white/60">
              {(notifications || []).map(notif => (
-               <div key={notif.id} className="bg-white border border-slate-100 rounded-lg p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[140px] group">
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                       <span className={cn(
-                         "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
-                         notif.priority === 'critical' ? "bg-rose-100 text-rose-700" : 
-                         notif.priority === 'high' ? "bg-orange-100 text-orange-700" :
-                         "bg-blue-100 text-blue-700"
-                       )}>
-                         {notif.priority === 'critical' ? 'CRITIQUE' : 
-                          notif.priority === 'high' ? 'MOYEN' : 'FAIBLE'}
-                       </span>
-                       <span className="text-[10px] text-slate-400 font-bold">
-                         {notif.createdAt ? format(getSafeDate(notif.createdAt), 'dd/MM HH:mm') : '-'}
-                       </span>
-                    </div>
-                    <p className="text-sm font-black text-slate-900 mb-1 leading-tight">{notif.title}</p>
-                    <p className="text-[11px] text-slate-500 leading-tight mb-2 line-clamp-2">{notif.message}</p>
-                  </div>
-                  <div className="flex justify-end">
-                    <button 
-                      onClick={() => markAsRead(notif.id!)}
-                      className="text-[11px] font-black uppercase text-blue-600 hover:text-blue-800 tracking-tighter"
-                    >
-                      ACQUITTER
-                    </button>
-                  </div>
-               </div>
+                <div key={notif.id} className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between min-h-[135px] group">
+                   <div>
+                     <div className="flex items-center justify-between mb-2">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider",
+                          notif.priority === 'critical' ? "bg-rose-50 text-rose-700 border border-rose-100" : 
+                          notif.priority === 'high' ? "bg-orange-50 text-orange-700 border border-orange-100" :
+                          "bg-blue-50 text-blue-700 border border-blue-100"
+                        )}>
+                          {notif.priority === 'critical' ? 'CRITIQUE' : 
+                           notif.priority === 'high' ? 'MOYEN' : 'FAIBLE'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          {notif.createdAt ? format(getSafeDate(notif.createdAt), 'dd/MM HH:mm') : '-'}
+                        </span>
+                     </div>
+                     <p className="text-xs font-extrabold text-slate-900 mb-0.5 leading-tight">{notif.title}</p>
+                     <p className="text-[11px] text-slate-500 leading-tight mb-2 line-clamp-2">{notif.message}</p>
+                   </div>
+                   <div className="flex justify-end pt-2 border-t border-slate-50">
+                     <button 
+                       onClick={() => markAsRead(notif.id!)}
+                       className="text-[10px] font-black uppercase text-[#0066FF] hover:text-[#0055DD] tracking-wider"
+                     >
+                       ACQUITTER
+                     </button>
+                   </div>
+                </div>
              ))}
           </div>
         </div>
       )}
 
-
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: 'Chiffre d\'Affaires', value: formatCurrency(statsData.monthlyRevenue), icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50', show: canViewFinancials },
-          { title: 'Commandes Total', value: statsData.totalSales, icon: ShoppingCart, color: 'text-purple-600', bg: 'bg-purple-50', show: canViewFinancials },
-          { title: 'Base Clients', value: statsData.totalCustomers, icon: Users, color: 'text-teal-600', bg: 'bg-teal-50', show: true },
-          { title: 'Alertes Stock', value: statsData.lowStock, icon: Package, color: 'text-red-600', bg: 'bg-red-50', show: canManageStock },
+          { title: 'Chiffre d\'Affaires', value: formatCurrency(statsData.monthlyRevenue), icon: TrendingUp, color: 'text-[#0066FF]', bg: 'bg-blue-50/60 border-blue-100/50', show: canViewFinancials },
+          { title: 'Commandes Total', value: statsData.totalSales, icon: ShoppingCart, color: 'text-[#0066FF]', bg: 'bg-blue-50/60 border-blue-100/50', show: canViewFinancials },
+          { title: 'Base Clients', value: statsData.totalCustomers, icon: Users, color: 'text-slate-700', bg: 'bg-slate-50 border-slate-200/60', show: true },
+          { title: 'Alertes Stock', value: statsData.lowStock, icon: Package, color: 'text-rose-600', bg: 'bg-rose-50/60 border-rose-100', show: canManageStock },
         ].filter(s => s.show).map((stat, idx) => (
-          <div key={idx} className="bg-white border border-slate-200 p-5 flex items-center gap-4 group hover:border-blue-300 transition-colors">
-            <div className={cn("w-12 h-12 rounded flex items-center justify-center shrink-0", stat.bg, stat.color)}>
-              <stat.icon size={24} />
-            </div>
+          <div key={idx} className="bg-white border border-slate-200/80 rounded-2xl p-5 flex items-center justify-between group hover:border-[#0066FF] hover:shadow-xs transition-all duration-200">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.title}</p>
-              <p className="text-xl font-black text-slate-800 tabular-nums">{stat.value}</p>
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{stat.title}</p>
+              <p className="text-2xl font-black text-slate-900 tabular-nums mt-1">{stat.value}</p>
+            </div>
+            <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border", stat.bg, stat.color)}>
+              <stat.icon size={22} />
             </div>
           </div>
         ))}
@@ -316,40 +309,40 @@ const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monthly Sales Bar Chart */}
         {canViewFinancials && (
-          <div className="lg:col-span-3 bg-white border border-slate-200 shadow-sm flex flex-col">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="lg:col-span-3 bg-white border border-slate-200/80 rounded-2xl shadow-xs flex flex-col overflow-hidden">
+            <div className="p-4 px-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Calendar size={16} className="text-emerald-500" />
-                <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">Ventes Mensuelles (12 Mois)</span>
+                <Calendar size={16} className="text-[#0066FF]" />
+                <span className="text-[11px] font-black uppercase tracking-widest text-slate-700">Ventes Mensuelles (12 Mois)</span>
               </div>
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                Total 12m: <span className="text-slate-900">{formatCurrency(monthlyChartData.reduce((acc, d) => acc + d.amount, 0))}</span>
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                Total 12m: <span className="text-slate-950 font-black">{formatCurrency(monthlyChartData.reduce((acc, d) => acc + d.amount, 0))}</span>
               </div>
             </div>
-            <div className="p-6 relative" style={{ height: '400px' }}>
+            <div className="p-6 relative" style={{ height: '360px' }}>
                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis 
                       dataKey="name" 
                       axisLine={false} 
                       tickLine={false} 
-                      tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 'bold' }} 
+                      tick={{ fontSize: 10, fill: '#64748b', fontWeight: 'bold' }} 
                     />
                     <YAxis 
                       axisLine={false} 
                       tickLine={false} 
-                      tick={{ fontSize: 10, fill: '#94a3b8' }}
+                      tick={{ fontSize: 10, fill: '#64748b' }}
                       tickFormatter={(value) => `${value > 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
                     />
                     <Tooltip 
                       cursor={{ fill: '#f8fafc' }}
-                      contentStyle={{ borderRadius: '0', border: '1px solid #e2e8f0', boxShadow: 'none', fontSize: '12px', fontWeight: 'bold' }}
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: 'none', fontSize: '11px', fontWeight: 'bold' }}
                       formatter={(value: number) => [formatCurrency(value), 'Ventes']}
                     />
-                    <Bar dataKey="amount" radius={[4, 4, 0, 0]} barSize={40}>
+                    <Bar dataKey="amount" radius={[5, 5, 0, 0]} barSize={36}>
                       {monthlyChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index === monthlyChartData.length - 1 ? '#059669' : '#10b981'} fillOpacity={0.8} />
+                        <Cell key={`cell-${index}`} fill={index === monthlyChartData.length - 1 ? '#0066FF' : '#3b82f6'} fillOpacity={0.85} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -360,27 +353,27 @@ const Dashboard: React.FC = () => {
 
         {/* Sales Chart */}
         {canViewFinancials && (
-          <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm flex flex-col">
-            <div className="p-4 border-b border-slate-100 flex items-center gap-2">
-              <TrendingUp size={16} className="text-blue-500" />
-              <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">Courbe des Ventes (7 Jours)</span>
+          <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl shadow-xs flex flex-col overflow-hidden">
+            <div className="p-4 px-5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+              <TrendingUp size={16} className="text-[#0066FF]" />
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-700">Courbe des Ventes (7 Jours)</span>
             </div>
-            <div className="p-6 relative" style={{ height: '400px' }}>
+            <div className="p-6 relative" style={{ height: '360px' }}>
                <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
-                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#0066FF" stopOpacity={0.12}/>
+                        <stop offset="95%" stopColor="#0066FF" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 'bold' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
                     <Tooltip 
-                      contentStyle={{ borderRadius: '0', border: '1px solid #e2e8f0', boxShadow: 'none', fontSize: '12px' }}
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: 'none', fontSize: '11px' }}
                     />
-                    <Area type="monotone" dataKey="sales" stroke="#2563eb" strokeWidth={3} fill="url(#chartGradient)" />
+                    <Area type="monotone" dataKey="sales" stroke="#0066FF" strokeWidth={3} fill="url(#chartGradient)" />
                   </AreaChart>
                </ResponsiveContainer>
             </div>
@@ -388,32 +381,34 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Recent Items */}
-        <div className={cn("bg-white border border-slate-200 shadow-sm flex flex-col", !canViewFinancials && "lg:col-span-3")}>
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+        <div className={cn("bg-white border border-slate-200/80 rounded-2xl shadow-xs flex flex-col overflow-hidden", !canViewFinancials && "lg:col-span-3")}>
+          <div className="p-4 px-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <RefreshCw size={16} className="text-blue-500" />
-              <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">Activités Récentes</span>
+              <RefreshCw size={14} className="text-[#0066FF]" />
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-700">Activités Récentes</span>
             </div>
-            <Button variant="ghost" size="sm" className="text-[10px] uppercase h-7" onClick={() => navigate('/sales-history')}>Détails</Button>
+            <Button variant="ghost" size="sm" className="text-[9px] uppercase h-7 tracking-wider text-[#0066FF] font-black hover:bg-slate-100 rounded-lg px-2" onClick={() => navigate('/sales-history')}>Détails</Button>
           </div>
           <div className="flex-1 overflow-y-auto">
              {(sales || []).slice(0, 10).map((sale) => (
-               <div key={sale.id} className="p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors flex items-start gap-3">
-                  <div className="w-8 h-8 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
-                    {sale.customerName?.charAt(0) || 'C'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-800 truncate">{sale.customerName || 'Client de passage'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">{sale.createdAt ? format(getSafeDate(sale.createdAt), 'HH:mm', { locale: fr }) : '-'}</p>
+               <div key={sale.id} className="p-4 px-5 border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 font-extrabold text-xs">
+                      {sale.customerName?.charAt(0).toUpperCase() || 'C'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800 truncate leading-none mb-1.5">{sale.customerName || 'Client de passage'}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase leading-none">{sale.createdAt ? format(getSafeDate(sale.createdAt), 'HH:mm', { locale: fr }) : '-'}</p>
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-black text-emerald-600">+{formatCurrency(sale.totalAmount)}</p>
-                    <p className="text-[9px] font-bold text-slate-300 uppercase">{sale.paymentMethod}</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{sale.paymentMethod || 'Espèces'}</p>
                   </div>
                </div>
              ))}
              {sales.length === 0 && (
-               <div className="py-20 text-center text-slate-300 italic text-xs">Aucune donnée</div>
+               <div className="py-20 text-center text-slate-450 italic text-xs">Aucune vente enregistrée</div>
              )}
           </div>
         </div>
@@ -421,35 +416,40 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-12">
         {/* Top Products Table */}
-        <div className="bg-white border border-slate-200 shadow-sm">
-           <div className="p-4 border-b border-slate-100 bg-slate-50">
-             <span className="text-[11px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-2">
-               <TrendingUp size={14} className="text-blue-500" /> Tops des Ventes
+        <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+           <div className="p-4 px-5 border-b border-slate-100 bg-slate-50">
+             <span className="text-[11px] font-black uppercase tracking-widest text-slate-700 flex items-center gap-2">
+               <TrendingUp size={14} className="text-[#0066FF]" /> Tops des Ventes
              </span>
            </div>
            <table className="mzsoft-table">
               <thead>
                 <tr>
-                  <th>Produit</th>
+                  <th className="px-5">Produit</th>
                   <th className="text-center">Ventes</th>
-                  <th className="text-right">Total</th>
+                  <th className="text-right px-5">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {topProducts.map((p, i) => (
-                  <tr key={i}>
-                    <td className="font-bold text-slate-700 text-xs">{p.name}</td>
-                    <td className="text-center font-bold text-blue-600 text-xs">{p.quantity}</td>
-                    <td className="text-right font-black text-slate-800 text-xs">{formatCurrency(p.total)}</td>
+                  <tr key={i} className="hover:bg-slate-50/30">
+                    <td className="font-extrabold text-slate-800 text-xs px-5 py-3">{p.name}</td>
+                    <td className="text-center font-black text-[#0066FF] text-xs">{p.quantity}</td>
+                    <td className="text-right font-black text-slate-800 text-xs px-5 font-mono">{formatCurrency(p.total)}</td>
                   </tr>
                 ))}
+                {topProducts.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="text-center py-8 text-slate-450 italic text-xs">Aucune donnée</td>
+                  </tr>
+                )}
               </tbody>
            </table>
         </div>
 
         {/* Stock Alerts Table */}
-        <div className="bg-white border border-slate-200 shadow-sm">
-           <div className="p-4 border-b border-slate-100 bg-slate-50">
+        <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+           <div className="p-4 px-5 border-b border-slate-100 bg-slate-50">
              <span className="text-[11px] font-black uppercase tracking-widest text-rose-600 flex items-center gap-2">
                <AlertTriangle size={14} /> Alertes Stock Critique
              </span>
@@ -457,41 +457,41 @@ const Dashboard: React.FC = () => {
            <table className="mzsoft-table">
               <thead>
                 <tr>
-                  <th>Produit Désignation</th>
+                  <th className="px-5">Produit Désignation</th>
                   <th className="text-center">Actuel</th>
-                  <th className="text-center">Statut</th>
+                  <th className="text-center px-5">Statut</th>
                 </tr>
               </thead>
               <tbody>
                 {statsData.lowStockItems.map((p, i) => (
-                  <tr key={i} className={p.stockQuantity <= 0 ? "bg-rose-50/50" : ""}>
-                    <td className="font-bold text-slate-700 text-xs">
-                       <div className="flex items-center gap-2">
-                          {p.stockQuantity <= 0 && <AlertCircle size={12} className="text-rose-600" />}
-                          {p.name}
-                       </div>
+                  <tr key={i} className={cn("hover:bg-slate-50/30", p.stockQuantity <= 0 ? "bg-rose-50/20" : "")}>
+                    <td className="font-extrabold text-slate-800 text-xs px-5 py-3">
+                        <div className="flex items-center gap-2">
+                           {p.stockQuantity <= 0 && <AlertCircle size={12} className="text-rose-600" />}
+                           {p.name}
+                        </div>
                     </td>
                     <td className={cn(
-                      "text-center font-black text-xs",
+                      "text-center font-black text-xs font-mono",
                       p.stockQuantity <= 0 ? "text-rose-600" : "text-amber-500"
                     )}>
                       {p.stockQuantity}
                     </td>
-                    <td className="text-center">
+                    <td className="text-center px-5">
                        <span className={cn(
-                         "text-[9px] font-black uppercase px-2 py-0.5 border",
+                         "text-[9px] font-black uppercase px-2 py-0.5 border rounded-md",
                          p.stockQuantity <= 0 
-                           ? "bg-rose-600 text-white border-rose-600" 
-                           : "bg-rose-50 text-rose-500 border-rose-100"
+                           ? "bg-rose-50 text-rose-700 border-rose-200" 
+                           : "bg-amber-50 text-amber-700 border-amber-200"
                        )}>
-                         {p.stockQuantity <= 0 ? 'RUPTURE' : 'Action Requise'}
+                         {p.stockQuantity <= 0 ? 'RUPTURE' : 'Stock Faible'}
                        </span>
                     </td>
                   </tr>
                 ))}
                 {statsData.lowStockItems.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="text-center py-4 text-emerald-500 font-bold text-xs uppercase">✓ Stock Optimisé</td>
+                    <td colSpan={3} className="text-center py-10 text-emerald-600 font-bold text-xs uppercase">✓ Stock Optimisé</td>
                   </tr>
                 )}
               </tbody>

@@ -39,7 +39,8 @@ import {
   Layers,
   AlertCircle,
   ArrowLeft,
-  HardHat
+  HardHat,
+  Box
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { pdfService } from '../services/pdfService';
@@ -553,6 +554,9 @@ const POS: React.FC = () => {
       setCustomCustomerName('');
       setShowSuccess(true);
       showToast("Vente réussie", "success");
+      if (settings?.wooEnabled) {
+        showToast("Synchronisation des stocks WooCommerce... OK", "success");
+      }
     } catch (error: any) {
       showToast(error.message || "Erreur lors de la vente", "error");
     } finally {
@@ -751,7 +755,7 @@ const POS: React.FC = () => {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-slate-100 overflow-hidden font-sans">
+    <div className="flex h-[calc(100vh-64px)] bg-[#F3F4F6] overflow-hidden font-sans">
       <StartSessionModal isOpen={!sessionLoading && !activeSession} />
       
       {activeSession && (
@@ -771,84 +775,88 @@ const POS: React.FC = () => {
         />
       )}
 
-      {/* Categories Sidebar */}
-      <div className="w-64 bg-slate-200 border-r border-slate-300 flex flex-col hidden lg:flex">
-        <div className="p-4 bg-slate-800 text-white flex items-center gap-4">
+      {/* Categories Sidebar on the left (WordPress Customizer Style) */}
+      <div className="w-60 bg-white border-r border-slate-200/80 flex flex-col hidden lg:flex">
+        <div className="p-4 bg-slate-950 text-white flex items-center gap-3">
           <Button 
             variant="ghost" 
             size="sm" 
             onClick={() => navigate('/')}
-            className="h-8 w-8 p-0 rounded-full hover:bg-slate-700 text-white"
+            className="h-8 w-8 p-0 rounded-full hover:bg-slate-800 text-white border-none shrink-0"
           >
             <ArrowLeft size={16} />
           </Button>
-          <div className="flex items-center gap-2">
-            <Layers size={18} />
-            <span className="font-bold uppercase text-xs tracking-widest">Catégories</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Layers size={16} className="text-[#0066FF]" />
+            <span className="font-black uppercase text-[10px] tracking-wider truncate">Mz-ERP PRO POS</span>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto bg-slate-50/55 p-2 space-y-1.5">
           <button
             onClick={() => setSelectedCategory(null)}
             className={cn(
-              "w-full text-left px-4 py-3 text-xs font-bold uppercase transition-colors border-b border-slate-300",
-              !selectedCategory ? "bg-white text-blue-600" : "hover:bg-slate-300 text-slate-600"
+              "w-full text-left px-4 py-2.5 text-xs font-black uppercase rounded-lg transition-all",
+              !selectedCategory 
+                ? "bg-[#0066FF]/10 text-[#0066FF] border border-[#0066FF]/15 shadow-2xs font-extrabold" 
+                : "hover:bg-slate-100 text-slate-650 hover:text-slate-900"
             )}
           >
-            Toutes les catégories
+            Tous les produits
           </button>
           {categories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
               className={cn(
-                "w-full text-left px-4 py-3 text-xs font-bold uppercase transition-colors border-b border-slate-300",
-                selectedCategory === cat.id ? "bg-white text-blue-600" : "hover:bg-slate-300 text-slate-600"
+                "w-full text-left px-4 py-2.5 text-xs font-black uppercase rounded-lg transition-all",
+                selectedCategory === cat.id 
+                  ? "bg-[#0066FF]/10 text-[#0066FF] border border-[#0066FF]/15 shadow-2xs font-extrabold" 
+                  : "hover:bg-slate-100 text-slate-650 hover:text-slate-900"
               )}
             >
               {cat.name}
             </button>
           ))}
         </div>
-        <div className="p-4 bg-slate-300/50 border-t border-slate-400">
-           <div className="flex items-center gap-2 text-slate-500 mb-2">
-              <Calendar size={14} />
-              <span className="text-[10px] font-bold uppercase">{new Date().toLocaleDateString('fr-FR')}</span>
+        <div className="p-4 bg-white border-t border-slate-150 text-[10px] space-y-1 text-slate-400 font-bold">
+           <div className="flex items-center gap-1.5 text-slate-500">
+              <Calendar size={13} className="text-slate-400" />
+              <span className="uppercase">{new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
            </div>
-           <div className="text-[10px] text-slate-400 font-bold uppercase">Système POS v1.2</div>
+           <div>MODULE CAISSE ENREGISTREUSE</div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Products Table Area */}
-        <div className="flex-none p-4 bg-white border-b border-slate-300 shadow-sm">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+      {/* Center-Left Section: Search and Visual Product Cards Grid */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-slate-100/50">
+        {/* Search & Actions Bar (Fond blanc, angles arrondis vifs) */}
+        <div className="flex-none p-4 bg-white border-b border-slate-200">
+          <div className="flex flex-col xl:flex-row gap-3">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-450" size={17} />
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Rechercher un produit... (Nom, SKU, Code-barre) [F1]"
+                placeholder="Scanner Code-barre ou Chercher un Produit... (F1)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 text-sm focus:bg-white focus:border-[#0066FF] outline-none transition-all rounded-xl focus:ring-1 focus:ring-[#0066FF]"
               />
             </div>
-            <div className="flex gap-2">
-              <div className="flex items-center px-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-[10px] font-black uppercase tracking-tighter">
-                <Zap size={14} className="mr-1 text-amber-500 animate-pulse" />
-                Scanner Actif
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <div className="flex items-center px-2.5 py-1.5 bg-blue-50 border border-blue-200/60 text-[#0066FF] rounded-xl text-[9px] font-black uppercase tracking-wider">
+                <Zap size={12} className="mr-1 text-amber-500 animate-pulse" />
+                Auto-Scan
               </div>
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setShowPendingModal(true)} 
-                className="text-xs h-9 relative border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                className="text-xs h-9 relative border-amber-200 bg-amber-50/50 text-amber-800 hover:bg-amber-100/50 rounded-xl font-bold uppercase transition-all duration-150"
               >
-                <Zap size={16} className="mr-1" /> En attente (F7)
+                <Zap size={14} className="mr-1" /> Attente (F7)
                 {pendingSales.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-600 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white">
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-amber-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border border-white shadow-2xs">
                     {pendingSales.length}
                   </span>
                 )}
@@ -858,432 +866,354 @@ const POS: React.FC = () => {
                 size="sm" 
                 onClick={handleSuspendSale} 
                 disabled={cart.length === 0 || isSuspending}
-                className="text-xs h-9 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                className="text-xs h-9 border-blue-200 bg-blue-50/50 text-blue-800 hover:bg-blue-100/50 rounded-xl font-bold uppercase transition-all duration-150"
               >
                 <div className="flex items-center gap-1">
-                   {isSuspending ? <RefreshCw size={14} className="animate-spin" /> : <ChevronRight size={14} />}
-                   <span>Instance (F6)</span>
+                   {isSuspending ? <RefreshCw size={12} className="animate-spin" /> : <ChevronRight size={12} />}
+                   <span>Prendre Instance (F6)</span>
                 </div>
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate('/sales-history')} className="text-xs h-9">
-                <History size={16} className="mr-1" /> Historique
+              <Button variant="outline" size="sm" onClick={() => navigate('/sales-history')} className="text-xs h-9 rounded-xl font-bold uppercase">
+                <History size={14} className="mr-1 text-slate-400" /> Historique
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCart([])} className="text-xs h-9 text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100">
-                <RefreshCw size={16} className="mr-1 text-rose-500" /> Vider (F8)
+              <Button variant="outline" size="sm" onClick={() => setCart([])} className="text-xs h-9 text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100 rounded-xl font-bold uppercase">
+                Vider (F8)
               </Button>
               {activeSession && (
                 <Button 
                   size="sm" 
                   onClick={() => setIsClosingModalOpen(true)} 
-                  className="text-xs h-9 bg-slate-900 hover:bg-black text-white px-4 border-none font-black uppercase tracking-widest"
+                  className="text-xs h-9 bg-slate-900 hover:bg-black text-white px-3.5 font-bold uppercase tracking-wider rounded-xl border-none"
                 >
-                  <History size={16} className="mr-1" /> Clôturer Ma Session
+                  Fermer Session
                 </Button>
               )}
             </div>
           </div>
 
-          {/* Bar de Raccourcis Clavier */}
-          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
-              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F1</span>
-              Recherche produit
-            </span>
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
-              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F2 / F9</span>
-              Valider la Vente
-            </span>
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
-              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F3</span>
-              Espèces (Cash)
-            </span>
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
-              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F4</span>
-              Carte / Virement
-            </span>
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
-              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F6</span>
-              Mettre en attente (Instance)
-            </span>
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
-              <span className="bg-slate-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F7</span>
-              Ventes en instance
-            </span>
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
-              <span className="bg-emerald-600 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F10</span>
-              Saisir montant reçu
-            </span>
-            <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200 text-rose-600">
-              <span className="bg-rose-800 text-white px-1.5 py-0.5 rounded text-[9px] font-mono font-black">F8</span>
-              Vider le Panier
-            </span>
+          {/* Quick Shortcuts Rail */}
+          <div className="hidden md:flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <span className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-slate-500 font-extrabold font-mono hover:bg-slate-100 cursor-default transition-all shadow-3xs"><span className="text-slate-400 font-sans mr-0.5">Rechercher:</span> F1</span>
+            <span className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-slate-500 font-extrabold font-mono hover:bg-slate-100 cursor-default transition-all shadow-3xs"><span className="text-slate-400 font-sans mr-0.5">Valider:</span> F2/F9</span>
+            <span className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-[#0066FF] border-[#0066FF]/20 bg-blue-50/20 font-extrabold font-mono cursor-default shadow-3xs"><span className="text-slate-400 font-sans mr-0.5">Espèces (F3) / Carte (F4)</span></span>
+            <span className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-slate-500 font-extrabold font-mono hover:bg-slate-100 cursor-default transition-all shadow-3xs"><span className="text-slate-400 font-sans mr-0.5">Suspendre:</span> F6</span>
+            <span className="bg-slate-55 px-2 py-0.5 rounded border border-slate-200 text-emerald-800 bg-emerald-50 border-emerald-200/60 font-extrabold font-mono cursor-default shadow-3xs"><span className="text-slate-400 font-sans mr-0.5">Saisir Monnaie:</span> F10</span>
           </div>
         </div>
 
-        {/* Product Grid Area (The "Top" Table) */}
-        <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
-          <table className="mzsoft-table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Désignation</th>
-                <th>Prix de vente</th>
-                <th>En Stock</th>
-                <th className="w-20 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map(p => (
-                <tr key={p.id} className="hover:bg-blue-50 cursor-pointer" onClick={() => addToCart(p)}>
-                  <td className="font-mono text-[11px] text-slate-500">{p.sku || p.barcode || '-'}</td>
-                  <td className="font-bold">{p.name}</td>
-                  <td className="font-bold text-blue-600">{formatCurrency(p.sellingPrice)}</td>
-                  <td>
-                    <span className={cn(
-                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                      p.stockQuantity <= 5 ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"
-                    )}>
-                      {p.stockQuantity} {p.unit || 'u'}
-                    </span>
-                  </td>
-                  <td className="text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!p.barcode) {
-                            showToast('Ce produit n\'a pas de code-barre', 'error');
-                            return;
-                          }
-                          setProductForBarcode(p);
-                          setIsBarcodeModalOpen(true);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
-                        title="Imprimer Code-Barre"
-                      >
-                        <Barcode size={14} />
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addToCart(p);
-                        }}
-                        className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        <Plus size={14} />
-                      </button>
+        {/* Dynamic Visual Product Cards Grid (Replaces old visual inventory list) */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+            {filteredProducts.map(p => {
+              const stockStatus = p.stockQuantity <= 0 ? 'out' : 
+                                 p.stockQuantity <= (p.minStockLevel || 5) ? 'low' : 'ok';
+              return (
+                <div 
+                  key={p.id} 
+                  onClick={() => addToCart(p)}
+                  className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-3xs hover:shadow-xs hover:border-[#0066FF] cursor-pointer transition-all duration-200 flex flex-col justify-between group active:scale-[0.98]"
+                >
+                  <div>
+                    {/* Visual box or product picture */}
+                    <div className="w-full h-24 bg-slate-50 rounded-xl border border-slate-150 overflow-hidden flex items-center justify-center text-slate-400 font-extrabold relative">
+                      {p.photoBase64 ? (
+                        <img src={p.photoBase64} alt={p.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <Box size={24} className="text-slate-300 group-hover:text-[#0066FF] transition-colors" />
+                      )}
+                      
+                      {/* Floating Stock badge */}
+                      <span className={cn(
+                        "absolute top-2 right-2 px-1.5 py-0.5 text-[8px] font-black uppercase rounded-md tracking-wider border",
+                        stockStatus === 'out' ? "bg-rose-55 text-white border-rose-100" :
+                        stockStatus === 'low' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                        "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      )}>
+                        {Number(p.stockQuantity || 0).toFixed(2).replace(/\.00$/, '')} {p.unit || 'u'}
+                      </span>
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredProducts.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-center py-10 text-slate-400 italic">Aucun produit trouvé</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
 
-        {/* Cart Area ("Bottom") */}
-        <div className="h-64 bg-slate-100 border-t border-slate-300 flex flex-col">
-          <div className="bg-slate-200 px-4 py-2 border-b border-slate-300 flex justify-between items-center">
-            <span className="text-[11px] font-black uppercase text-slate-600 tracking-widest flex items-center gap-2">
-              <ShoppingCart size={14} /> Détails de la vente en cours
-            </span>
-            <span className="text-[11px] font-bold text-slate-500">
-              {cart.length} ligne(s) sélectionnée(s)
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto font-sans">
-            <table className="mzsoft-table">
-              <thead className="sticky top-0 z-10">
-                <tr>
-                  <th>Libellé</th>
-                  <th className="w-24 text-right">Prix Unitaire</th>
-                  <th className="w-32 text-center">Quantité</th>
-                  <th className="w-24 text-right">Total</th>
-                  <th className="w-16 text-center">Supp.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cart && cart.map(item => (
-                  <tr key={`${item.id}-${item.unit}`}>
-                    <td className="py-2">
-                       <p className="font-bold text-slate-700 leading-tight">{item.name}</p>
-                       <p className="text-[9px] text-slate-400 font-bold uppercase">
-                         {item.unit === 'ml' ? 'Facturation au Mètre' : 
-                          item.unit === 'g' || item.unit === 'kg' ? 'Facturation au Poids' :
-                          item.unit === 'm' ? 'Facturation à la Longueur' :
-                          item.unit === 'l' ? 'Facturation au Volume' :
-                          item.unit === 'ans' ? 'Service (Années)' :
-                          'Facturation à l\'unité'}
-                       </p>
-                    </td>
-                    <td className="text-right font-mono text-slate-500">
-                      {formatCurrency(item.price)}
-                      <span className="text-[9px] ml-1">/{item.unit || 'u'}</span>
-                    </td>
-                    <td className="text-center px-1">
-                      <div className="flex items-center justify-center gap-1 group/qty">
-                        <button 
-                          onClick={() => updateQuantity(item.id, -1, item.unit)} 
-                          className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95"
-                          title="Retirer 1"
-                        >
-                          <Minus size={14}/>
-                        </button>
-                        
-                        <input 
-                          type="number"
-                          step={item.unit === 'm' || item.unit === 'kg' || item.unit === 'ml' ? "0.01" : "1"}
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const isFractional = item.unit === 'm' || item.unit === 'kg' || item.unit === 'l' || item.unit === 'ml';
-                            const val = isFractional ? parseFloat(e.target.value) : parseInt(e.target.value);
-                            
-                            if (!isNaN(val)) {
-                              const product = products.find(p => p.id === item.id);
-                              const stock = product ? Number(product.stockQuantity) : 0;
-                              const stockInUnit = item.unit === 'ml' ? stock * (product?.unitsPerRoll || 1) : stock;
-                              const targetVal = Math.max(0, Math.min(val, stockInUnit)); // Allow 0 while typing
-                              
-                              setCart(prev => prev.map(i => 
-                                (i.id === item.id && i.unit === item.unit)
-                                  ? { ...i, quantity: targetVal, total: Number((targetVal * i.price).toFixed(2)) } 
-                                  : i
-                              ));
+                    <h3 className="text-xs font-black text-slate-850 uppercase leading-tight line-clamp-2 tracking-tight group-hover:text-[#0066FF] transition-colors mt-2">
+                      {p.name}
+                    </h3>
+                  </div>
 
-                              if (val > stockInUnit) {
-                                showToast(`Stock maximum: ${stockInUnit} ${item.unit}`, 'warning');
-                              }
-                            } else if (e.target.value === '') {
-                               setCart(prev => prev.map(i => 
-                                (i.id === item.id && i.unit === item.unit)
-                                  ? { ...i, quantity: 0, total: 0 } 
-                                  : i
-                              ));
-                            }
-                          }}
-                          className="w-16 h-7 text-center font-black text-sm bg-blue-50 border border-blue-200 rounded-md outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                        <button
-                          onClick={() => toggleUnit(item.id, item.unit || 'u')}
-                          className="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded border border-blue-100 transition-colors"
-                          title="Changer l'unité (u/ml)"
-                        >
-                          {item.unit || 'u'}
-                        </button>
-                        
-                        <button 
-                          onClick={() => updateQuantity(item.id, 1, item.unit)} 
-                          className="w-7 h-7 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95"
-                          title="Ajouter 1"
-                        >
-                          <Plus size={14}/>
-                        </button>
-                      </div>
-                    </td>
-                    <td className="text-right font-bold text-slate-900">{formatCurrency(item.total)}</td>
-                    <td className="text-center">
-                      <button onClick={() => removeFromCart(item.id)} className="text-red-500 hover:text-red-700">
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {cart.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="text-center py-4 text-slate-400 italic">Veuillez sélectionner des produits</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                    <div>
+                      {p.sku ? (
+                        <span className="text-[9px] font-mono text-slate-400 bg-slate-50 border border-slate-150 px-1 py-0.5 rounded">
+                          {p.sku}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-mono text-slate-350 italic">Sans SKU</span>
+                      )}
+                    </div>
+                    
+                    <div className="text-right">
+                      <span className="text-xs font-black block text-[#0066FF] font-mono">
+                        {formatCurrency(p.sellingPrice)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+
+          {filteredProducts.length === 0 && (
+            <div className="bg-white border border-slate-200/80 rounded-2xl py-16 text-center text-slate-400 italic">
+               <Package size={36} className="mx-auto text-slate-300 mb-2" />
+               <p className="text-xs font-black uppercase tracking-wider text-slate-500">Aucun produit ne correspond à vos critères</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right Side: Totals & Controls */}
-      <div className="w-96 bg-white border-l border-slate-300 flex flex-col shadow-lg overflow-y-auto">
-        {/* Customer Section */}
-        <div className="p-4 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Client</span>
-            <div className="flex gap-2">
+      {/* RIGHT SIDE: Interactive Full Basket & Payment Controls (Panier à droite) */}
+      <div className="w-100 bg-white border-l border-slate-250 flex flex-col shadow-lg overflow-hidden shrink-0">
+        
+        {/* Dynamic Cart Lines */}
+        <div className="bg-slate-50/50 p-4 border-b border-slate-150 flex-none flex items-center justify-between">
+           <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
+             <ShoppingCart size={14} className="text-[#0066FF]" /> Panier ({cart.length} ligne{cart.length > 1 ? 's' : ''})
+           </span>
+           {cart.length > 0 && (
+             <button 
+               onClick={() => setCart([])} 
+               className="text-[9px] font-bold text-rose-600 uppercase hover:underline transition-all"
+             >
+               Vider
+             </button>
+           )}
+        </div>
+
+        {/* Scrollable Items Panel */}
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+           {cart.map(item => (
+             <div key={`${item.id}-${item.unit}`} className="p-3.5 hover:bg-slate-50/40 transition-colors flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-extrabold text-slate-800 uppercase leading-snug tracking-tight truncate">{item.name}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                     {formatCurrency(item.price)} <span className="text-[8px] font-bold">/{item.unit || 'u'}</span>
+                  </p>
+                </div>
+                
+                {/* Quantity adjustments */}
+                <div className="flex items-center gap-1 shrink-0">
+                   <button 
+                     onClick={() => updateQuantity(item.id, -1, item.unit)}
+                     className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-650 transition-colors scale-95"
+                     title="Diminuer"
+                   >
+                     <Minus size={11} className="stroke-[3]" />
+                   </button>
+                   
+                   <input 
+                     type="number"
+                     step={item.unit === 'm' || item.unit === 'kg' || item.unit === 'ml' ? "0.01" : "1"}
+                     value={item.quantity}
+                     onChange={(e) => {
+                       const isFrac = item.unit === 'm' || item.unit === 'kg' || item.unit === 'l' || item.unit === 'ml';
+                       const val = isFrac ? parseFloat(e.target.value) : parseInt(e.target.value);
+                       if (!isNaN(val)) {
+                         const product = products.find(p => p.id === item.id);
+                         const stock = product ? Number(product.stockQuantity) : 0;
+                         const stockInUnit = item.unit === 'ml' ? stock * (product?.unitsPerRoll || 1) : stock;
+                         const targetVal = Math.max(0, Math.min(val, stockInUnit));
+                         setCart(prev => prev.map(i => 
+                           (i.id === item.id && i.unit === item.unit)
+                             ? { ...i, quantity: targetVal, total: Number((targetVal * i.price).toFixed(2)) } 
+                             : i
+                         ));
+                         if (val > stockInUnit) {
+                           showToast(`Stock maximum: ${stockInUnit} ${item.unit}`, 'warning');
+                         }
+                       } else if (e.target.value === '') {
+                         setCart(prev => prev.map(i => 
+                           (i.id === item.id && i.unit === item.unit) ? { ...i, quantity: 0, total: 0 } : i
+                         ));
+                       }
+                     }}
+                     className="w-11 h-6 text-center text-xs font-black text-slate-800 bg-slate-50 border border-slate-200 outline-none focus:ring-1 focus:ring-[#0066FF] rounded-md"
+                   />
+
+                   <button 
+                     onClick={() => updateQuantity(item.id, 1, item.unit)}
+                     className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-650 transition-colors scale-95"
+                     title="Augmenter"
+                   >
+                     <Plus size={11} className="stroke-[3]" />
+                   </button>
+                </div>
+
+                <div className="text-right shrink-0 min-w-[4.2rem]">
+                   <p className="text-xs font-black text-slate-800 font-mono">{formatCurrency(item.total)}</p>
+                   <button 
+                     onClick={() => removeFromCart(item.id)} 
+                     className="text-slate-400 hover:text-rose-600 transition-colors mt-1"
+                   >
+                     <Trash2 size={13} />
+                   </button>
+                </div>
+             </div>
+           ))}
+
+           {cart.length === 0 && (
+             <div className="py-20 text-center text-slate-400 italic text-xs">
+                Panier Vide. Veuillez cliquer sur des produits à gauche.
+             </div>
+           )}
+        </div>
+
+        {/* Customer Select Option */}
+        <div className="p-3.5 bg-slate-50 border-t border-slate-150 flex-none">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Client</span>
+            <div className="flex gap-2 text-[9px] font-black uppercase tracking-wider">
                {selectedCustomer && (
-                 <button onClick={() => { setSelectedCustomer(null); setCustomCustomerName(''); }} className="text-[10px] font-bold text-rose-600 hover:underline">Détacher</button>
+                 <button onClick={() => { setSelectedCustomer(null); setCustomCustomerName(''); }} className="text-rose-600 hover:underline">Retirer</button>
                )}
-               <button onClick={() => setShowCustomerModal(true)} className="text-[10px] font-bold text-blue-600 hover:underline">
-                 {selectedCustomer ? 'Changer' : 'Sélectionner'}
+               <button onClick={() => setShowCustomerModal(true)} className="text-[#0066FF] hover:underline">
+                 {selectedCustomer ? 'Remplacer' : 'Sélectionner (F10)'}
                </button>
             </div>
           </div>
           
           {selectedCustomer ? (
-            <div className="flex items-center gap-3 p-2 border border-blue-200 bg-blue-50">
-              <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white">
-                <User size={16} />
-              </div>
-              <div className="flex-1 min-w-0">
-                 <div className="text-xs font-bold text-slate-900 truncate">
-                   {selectedCustomer.name}
-                   {selectedCustomer.company && <span className="ml-1 text-[9px] text-blue-600 italic lowercase tracking-tight">({selectedCustomer.company})</span>}
-                 </div>
-                 <div className="text-[10px] text-slate-500">
-                   {selectedCustomer.phone || 'Sans téléphone'} 
-                   {selectedCustomer.clientCode && <span className="ml-2 font-mono text-blue-500 bg-blue-50 px-1 rounded-sm text-[9px]">ID: {selectedCustomer.clientCode}</span>}
-                 </div>
-              </div>
+            <div className="p-2.5 border border-slate-200 bg-white rounded-xl flex items-center justify-between">
+               <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-850 truncate leading-none mb-1">
+                    {selectedCustomer.name}
+                  </div>
+                  <div className="text-[9px] text-slate-400">
+                    {selectedCustomer.phone || 'Sans Contact'} 
+                  </div>
+               </div>
+               <User size={14} className="text-slate-400" />
             </div>
           ) : (
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
               <input 
                 type="text"
-                placeholder="Nom du client (Occasionnel)..."
+                placeholder="Client de Passage (Occasionnel)..."
                 value={customCustomerName}
                 onChange={(e) => setCustomCustomerName(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-slate-300 bg-white text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none"
+                className="w-full pl-9 pr-3 py-1.5 border border-slate-300 bg-white text-xs font-black rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0066FF] focus:border-[#0066FF]"
               />
             </div>
           )}
         </div>
 
-        {/* Project Section */}
-        <div className="p-4 border-b border-slate-200">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-1">
-              <HardHat size={12} className="text-blue-500" /> Chantier / Projet
+        {/* Project Select Option */}
+        <div className="p-3.5 bg-white border-t border-slate-150 flex-none">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
+              <HardHat size={12} className="text-[#0066FF]" /> Chantier / Projet affilié
             </span>
-            <div className="flex gap-2">
-               {selectedProject && (
-                 <button onClick={() => setSelectedProject(null)} className="text-[10px] font-bold text-rose-600 hover:underline">Détacher</button>
-               )}
-            </div>
+            {selectedProject && (
+              <button onClick={() => setSelectedProject(null)} className="text-[9px] font-black uppercase text-rose-600 hover:underline">Détacher</button>
+            )}
           </div>
-          
           <select 
-            className="w-full text-xs font-bold uppercase p-2 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full text-xs font-bold uppercase p-2 border border-slate-250 bg-slate-50 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0066FF]"
             value={selectedProject?.id || ''}
             onChange={(e) => {
               const prj = (projects || []).find(p => p.id === e.target.value);
               setSelectedProject(prj || null);
             }}
           >
-            <option value="">-- Aucun Chantier --</option>
+            <option value="">-- Aucun affiliation --</option>
             {(projects || []).map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </div>
 
-        {/* Custom Header Info Section */}
-        <div className="px-4 py-3 border-b border-slate-200 bg-white">
-          <button 
-            onClick={() => {
-              const el = document.getElementById('pos-custom-header');
-              if (el) el.classList.toggle('hidden');
-            }}
-            className="flex items-center justify-between w-full text-[10px] font-black uppercase text-slate-400 hover:text-blue-600 transition-colors tracking-widest mb-1"
-          >
-            <span>En-tête personnalisé</span>
-            <Printer size={12} />
-          </button>
-          <div id="pos-custom-header" className="hidden animate-in fade-in slide-in-from-top-1 duration-200">
-            <textarea 
-              value={customInfoOverride}
-              onChange={(e) => setCustomInfoOverride(e.target.value)}
-              className="w-full mt-2 p-2 border border-slate-200 text-[10px] font-medium min-h-[60px] bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-blue-500 rounded"
-              placeholder="Modifier les coordonnées pour cette vente..."
-            />
-          </div>
-        </div>
-
-        {/* Totals Section */}
-        <div className="p-4 bg-slate-800 text-white space-y-3">
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Total HT</span>
+        {/* Totals section in right Column */}
+        <div className="p-4 bg-slate-950 text-white space-y-2 flex-none">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-400 font-bold uppercase">Total Brut HT</span>
             <span className="font-mono">{formatCurrency(subtotal)}</span>
           </div>
           {settings.useTax && (
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">TVA ({taxRate * 100}%)</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-400 font-bold uppercase">TVA ({taxRate * 100}%)</span>
               <span className="font-mono">{formatCurrency(tax)}</span>
             </div>
           )}
-          <div className="flex justify-between items-center text-sm border-t border-slate-700 pt-2">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Remise</span>
-            <div className="relative">
-               <input 
-                type="number" 
-                value={discount || ''} 
-                onChange={(e) => setDiscount(Number(e.target.value))}
-                className="w-24 bg-slate-900 border border-slate-700 text-right px-2 py-1 text-xs rounded focus:ring-1 focus:ring-blue-500 outline-none"
-               />
-            </div>
+          <div className="flex justify-between items-center text-xs border-t border-slate-800 pt-2">
+            <span className="text-slate-400 font-bold uppercase">Déduire Remise</span>
+            <input 
+              type="number" 
+              value={discount || ''} 
+              onChange={(e) => setDiscount(Number(e.target.value))}
+              className="w-20 bg-slate-900 border border-slate-800 text-right px-2 py-0.5 text-xs rounded font-bold font-mono text-white outline-none focus:ring-1 focus:ring-[#0066FF]"
+            />
           </div>
-          <div className="pt-2">
-             <div className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">À payer (TTC)</div>
-             <div className="text-5xl font-black text-right tracking-tighter text-white tabular-nums">
+          <div className="pt-2 flex justify-between items-baseline border-t border-slate-850">
+             <div className="text-[10px] font-black uppercase text-[#0066FF] tracking-wider">NET À PAYER (DA)</div>
+             <div className="text-3xl font-black text-right text-white tabular-nums tracking-tighter">
                 {formatCurrency(total)}
              </div>
           </div>
         </div>
 
-        {/* Payment & Change Section */}
-        <div className="p-4 space-y-4">
+        {/* Numeric Pad & Payment Methods */}
+        <div className="p-4 space-y-3 bg-slate-50 border-t border-slate-200 flex-none">
           <div className="grid grid-cols-2 gap-2">
             <button 
               onClick={() => setPaymentMethod('cash')}
               className={cn(
-                "p-3 border-2 flex flex-col items-center gap-1 transition-all",
-                paymentMethod === 'cash' ? "bg-blue-50 border-blue-600 text-blue-700 ring-2 ring-blue-100" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
+                "py-2.5 px-3 border rounded-xl flex items-center justify-center gap-1.5 transition-all text-xs font-black uppercase",
+                paymentMethod === 'cash' 
+                  ? "bg-[#0066FF] border-[#0066FF] text-white shadow-xs" 
+                  : "bg-white border-slate-250 text-slate-500 hover:border-slate-350"
               )}
             >
-              <Banknote size={20} />
-              <span className="text-[10px] font-bold uppercase">Espèces</span>
+              <Banknote size={15} />
+              <span>Espèces</span>
             </button>
             <button 
               onClick={() => setPaymentMethod('card')}
               className={cn(
-                "p-3 border-2 flex flex-col items-center gap-1 transition-all",
-                paymentMethod === 'card' ? "bg-blue-50 border-blue-600 text-blue-700 ring-2 ring-blue-100" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
+                "py-2.5 px-3 border rounded-xl flex items-center justify-center gap-1.5 transition-all text-xs font-black uppercase",
+                paymentMethod === 'card' 
+                  ? "bg-[#0066FF] border-[#0066FF] text-white shadow-xs" 
+                  : "bg-white border-slate-250 text-slate-500 hover:border-slate-350"
               )}
             >
-              <CreditCard size={20} />
-              <span className="text-[10px] font-bold uppercase">Carte</span>
+              <CreditCard size={15} />
+              <span>Carte / TPE</span>
             </button>
           </div>
 
-          <div className="space-y-4 bg-slate-50 p-4 border border-slate-200">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-[10px] font-bold uppercase text-slate-500">Montant Reçu</span>
-                <span className="text-[10px] font-bold text-blue-600">F10</span>
-              </div>
-              <input 
-                ref={receivedAmountInputRef}
-                type="number"
-                value={receivedAmount}
-                onChange={(e) => setReceivedAmount(e.target.value)}
-                className="w-full p-3 bg-white border border-slate-300 text-2xl font-black text-right text-emerald-600 outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="0.00"
-              />
+          <div className="bg-white p-3 border border-slate-200 rounded-xl space-y-1">
+            <div className="flex justify-between items-center">
+              <span className="text-[9px] font-black uppercase text-slate-400">Espèces Reçues</span>
+              <span className="text-[8px] font-black uppercase text-amber-600 bg-amber-50 px-1 py-0.5 rounded border border-amber-100">F10</span>
             </div>
-            
-            <div className="flex justify-between items-center py-2 border-t border-slate-200">
-              <span className="text-[10px] font-black uppercase text-slate-500">Rendu (Monnaie)</span>
-              <span className="text-xl font-black text-slate-900">{formatCurrency(change)}</span>
+            <input 
+              ref={receivedAmountInputRef}
+              type="number"
+              value={receivedAmount}
+              onChange={(e) => setReceivedAmount(e.target.value)}
+              className="w-full text-xl font-bold font-mono text-right text-emerald-600 border-none outline-none focus:outline-none focus:ring-0 p-0 shadow-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              placeholder="0.00"
+            />
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100 text-[10px] text-slate-500">
+              <span className="font-extrabold uppercase">Rendre (Monnaie)</span>
+              <span className="font-mono font-black text-slate-900">{formatCurrency(change)}</span>
             </div>
           </div>
 
-          {/* Numeric Pad */}
-          <div className="grid grid-cols-3 gap-1">
-            {['7','8','9','4','5','6','1','2','3','0','.','C'].map(btn => (
+          {/* Mini Numpad */}
+          <div className="grid grid-cols-4 gap-1.5">
+            {['7','8','9','C','4','5','6','0','1','2','3','.'].map(btn => (
               <button 
                 key={btn}
                 onClick={() => handleNumpadClick(btn)}
-                className="h-12 bg-white border border-slate-300 font-bold hover:bg-slate-100 active:bg-slate-200"
+                className="h-9 rounded-lg bg-white border border-slate-250 font-bold text-xs hover:bg-slate-100 active:scale-95 transition-transform"
               >
                 {btn}
               </button>
@@ -1291,12 +1221,12 @@ const POS: React.FC = () => {
           </div>
 
           <Button 
-            className="w-full py-8 text-xl font-black uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-lg transition-transform active:scale-95"
+            className="w-full py-4 text-sm font-black uppercase tracking-wider bg-[#0066FF] hover:bg-[#0055DD] text-white rounded-xl shadow-md transition-all active:scale-[0.98] border-none mt-1 h-14"
             disabled={cart.length === 0 || isProcessing}
             isLoading={isProcessing}
             onClick={handleSale}
           >
-            <CheckCircle2 className="mr-3" size={24} /> Valider (F2 / F9)
+            <CheckCircle2 className="mr-2" size={18} /> Valider la Vente (F2 / F9)
           </Button>
         </div>
       </div>

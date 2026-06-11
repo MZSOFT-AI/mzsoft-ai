@@ -33,6 +33,13 @@ const DEFAULT_SETTINGS: CompanySettings = {
   notifyStockDiscrepancy: true,
   notifyCashDiscrepancy: true,
   customCompanyInfo: '',
+  wooEnabled: false,
+  wooUrl: '',
+  wooConsumerKey: '',
+  wooConsumerSecret: '',
+  wooSyncOnSale: true,
+  wooSyncOnStockIn: true,
+  wooIgnoreNoSku: true,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);

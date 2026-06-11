@@ -622,7 +622,7 @@ const Users: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tighter uppercase flex items-center gap-2">
-            <ShieldCheck className="text-[#7f54b3]" size={28} />
+            <ShieldCheck className="text-[#0061ff]" size={28} />
             Gestion des Utilisateurs
           </h1>
           <p className="text-slate-500 text-sm font-medium">Contrôlez les accès et les permissions de votre équipe</p>
@@ -630,33 +630,33 @@ const Users: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={cn(
-                "p-2 rounded-lg transition-all",
-                viewMode === 'list' 
-                  ? "bg-white text-[#7f54b3] shadow-xs font-black" 
-                  : "text-slate-400 hover:text-slate-600"
-              )}
-              title="Vue Liste"
+               type="button"
+               onClick={() => setViewMode('list')}
+               className={cn(
+                 "p-2 rounded-lg transition-all",
+                 viewMode === 'list' 
+                   ? "bg-white text-[#0061ff] shadow-xs font-black" 
+                   : "text-slate-400 hover:text-slate-600"
+               )}
+               title="Vue Liste"
             >
               <List size={18} />
             </button>
             <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={cn(
-                "p-2 rounded-lg transition-all",
-                viewMode === 'grid' 
-                  ? "bg-white text-[#7f54b3] shadow-xs font-black" 
-                  : "text-slate-400 hover:text-slate-600"
-              )}
-              title="Vue Grille"
+               type="button"
+               onClick={() => setViewMode('grid')}
+               className={cn(
+                 "p-2 rounded-lg transition-all",
+                 viewMode === 'grid' 
+                   ? "bg-white text-[#0061ff] shadow-xs font-black" 
+                   : "text-slate-400 hover:text-slate-600"
+               )}
+               title="Vue Grille"
             >
               <Grid size={18} />
             </button>
           </div>
-          <Button onClick={() => handleOpenModal()} className="bg-[#7f54b3] hover:bg-[#6c449c] text-white flex items-center gap-2 px-6 rounded-xl font-bold">
+          <Button onClick={() => handleOpenModal()} className="bg-[#0061ff] hover:bg-[#004ecc] text-white flex items-center gap-2 px-6 rounded-xl font-bold">
             <UserPlus size={18} />
             Nouvel Utilisateur
           </Button>
@@ -665,13 +665,13 @@ const Users: React.FC = () => {
 
       {/* Search Bar */}
       <div className="relative group">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#7f54b3] transition-colors" size={20} />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#0061ff] transition-colors" size={20} />
         <input 
           type="text" 
           placeholder="Rechercher par nom, email ou identifiant..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full h-14 pl-12 pr-4 bg-white border-2 border-slate-100 rounded-xl text-slate-700 font-bold focus:border-[#7f54b3] outline-none transition-all shadow-sm"
+          className="w-full h-14 pl-12 pr-4 bg-white border-2 border-slate-100 rounded-xl text-slate-700 font-bold focus:border-[#0061ff] outline-none transition-all shadow-sm"
         />
       </div>
 
@@ -692,13 +692,13 @@ const Users: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-[#7f54b3]/5 transition-colors">
+                <tr key={user.id} className="hover:bg-[#0061ff]/5 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 border border-slate-200 overflow-hidden shadow-xs shrink-0">
                       {user.photoURL ? (
                         <img src={user.photoURL} alt={user.displayName} className="w-full h-full object-cover" />
                       ) : (
-                        <UserIcon size={18} className="text-[#7f54b3]" />
+                        <UserIcon size={18} className="text-[#0061ff]" />
                       )}
                     </div>
                   </td>
@@ -723,7 +723,7 @@ const Users: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={cn(
                       "px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border",
-                      user.role === 'superadmin' ? "bg-purple-50 text-purple-700 border-purple-200" :
+                      user.role === 'superadmin' ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
                       user.role === 'admin' ? "bg-red-50 text-red-700 border-red-200" :
                       (user.role === 'manager' || user.role === 'gerant') ? "bg-blue-50 text-blue-700 border-blue-200" :
                       user.role === 'comptable' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
@@ -788,7 +788,7 @@ const Users: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => handleOpenModal(user)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200 text-slate-500 hover:text-[#7f54b3] hover:border-[#7f54b3] hover:bg-[#7f54b3]/5 transition-all active:scale-95"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200 text-slate-500 hover:text-[#0061ff] hover:border-[#0061ff] hover:bg-[#0061ff]/5 transition-all active:scale-95"
                         disabled={user.role === 'superadmin' && !isSuperAdmin}
                         title="Modifier"
                       >
@@ -921,7 +921,7 @@ const Users: React.FC = () => {
 
       {loading && filteredUsers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7f54b3] mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0061ff] mb-4"></div>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Chargement des utilisateurs...</p>
         </div>
       )}
@@ -938,7 +938,7 @@ const Users: React.FC = () => {
             >
               <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
                 <h2 className="text-xl font-black text-slate-800 tracking-tighter uppercase flex items-center gap-2">
-                  {editingUser ? <Edit2 size={20} className="text-[#7f54b3]" /> : <UserPlus size={20} className="text-[#7f54b3]" />}
+                  {editingUser ? <Edit2 size={20} className="text-[#0061ff]" /> : <UserPlus size={20} className="text-[#0061ff]" />}
                   {editingUser ? 'Modifier l\'utilisateur' : 'Nouvel Utilisateur'}
                 </h2>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
@@ -961,7 +961,7 @@ const Users: React.FC = () => {
                         type="text" 
                         value={formData.displayName}
                         onChange={(e) => setFormData({...formData, displayName: e.target.value})}
-                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
+                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#0061ff] outline-none transition-all"
                         required
                         placeholder="Ex: Mohamed Amine"
                       />
@@ -978,7 +978,7 @@ const Users: React.FC = () => {
                             permissions: getPresetPermissions(newRole)
                           });
                         }}
-                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
+                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#0061ff] outline-none transition-all"
                         disabled={!isSuperAdmin && formData.role === 'superadmin'}
                       >
                         <option value="superadmin">Super Admin</option>
@@ -1000,7 +1000,7 @@ const Users: React.FC = () => {
                       <select 
                         value={formData.status}
                         onChange={(e) => setFormData({...formData, status: e.target.value as UserData['status']})}
-                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
+                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold focus:border-[#0061ff] outline-none transition-all"
                       >
                         <option value="active">Actif</option>
                         <option value="inactive">Inactif (Bloqué)</option>
@@ -1024,7 +1024,7 @@ const Users: React.FC = () => {
                       onClick={() => setFormData({...formData, isLocalOnly: !formData.isLocalOnly})}
                       className={cn(
                         "px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        !formData.isLocalOnly ? "bg-[#7f54b3]/10 text-[#7f54b3] ring-2 ring-[#7f54b3]/25" : "bg-slate-100 text-slate-400"
+                        !formData.isLocalOnly ? "bg-[#0061ff]/10 text-[#0061ff] ring-2 ring-[#0061ff]/25" : "bg-slate-100 text-slate-400"
                       )}
                     >
                       Connexion Google
@@ -1060,33 +1060,33 @@ const Users: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-4 p-4 bg-[#7f54b3]/5 rounded-xl border border-[#7f54b3]/10">
+                    <div className="space-y-4 p-4 bg-[#0061ff]/5 rounded-xl border border-[#0061ff]/10">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black uppercase text-[#7f54b3] ml-1">Adresse Email</label>
+                          <label className="text-[10px] font-black uppercase text-[#0061ff] ml-1">Adresse Email</label>
                           <input 
                             type="email" 
                             value={formData.email}
                             onChange={(e) => setFormData({...formData, email: e.target.value})}
-                            className="w-full h-11 px-4 bg-white border border-[#7f54b3]/20 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
+                            className="w-full h-11 px-4 bg-white border border-[#0061ff]/20 rounded-lg text-sm font-bold focus:border-[#0061ff] outline-none transition-all"
                             required={!formData.isLocalOnly}
                             placeholder="exemple@gmail.com"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black uppercase text-[#7f54b3] ml-1">
+                          <label className="text-[10px] font-black uppercase text-[#0061ff] ml-1">
                             {editingUser ? 'Nouveau Mot de Passe (Optionnel)' : 'Mot de Passe (Optionnel)'}
                           </label>
                           <input 
                             type="password" 
                             value={formData.localPassword}
                             onChange={(e) => setFormData({...formData, localPassword: e.target.value})}
-                            className="w-full h-11 px-4 bg-white border border-[#7f54b3]/20 rounded-lg text-sm font-bold focus:border-[#7f54b3] outline-none transition-all"
+                            className="w-full h-11 px-4 bg-white border border-[#0061ff]/20 rounded-lg text-sm font-bold focus:border-[#0061ff] outline-none transition-all"
                             placeholder="••••••••"
                           />
                         </div>
                       </div>
-                      <p className="text-[9px] text-[#7f54b3]/70 font-bold uppercase mt-1">L'utilisateur pourra se connecter via son compte Google ou directement avec son email et mot de passe.</p>
+                      <p className="text-[9px] text-[#0061ff]/70 font-bold uppercase mt-1">L'utilisateur pourra se connecter via son compte Google ou directement avec son email et mot de passe.</p>
                     </div>
                   )}
                 </div>
@@ -1094,7 +1094,7 @@ const Users: React.FC = () => {
                 {/* Permissions Section */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <div className="flex flex-col gap-1 mb-2">
-                    <div className="flex items-center gap-2 text-[#7f54b3]">
+                    <div className="flex items-center gap-2 text-[#0061ff]">
                       <Shield size={16} />
                       <span className="text-[11px] font-black uppercase tracking-[0.2em]">Autorisations Spécifiques</span>
                     </div>
@@ -1138,7 +1138,7 @@ const Users: React.FC = () => {
                         </span>
                         <div className={cn(
                           "w-5 h-5 rounded-full flex items-center justify-center transition-all",
-                          formData.permissions[key as keyof UserPermissions] ? "bg-[#7f54b3] scale-110" : "bg-slate-200"
+                          formData.permissions[key as keyof UserPermissions] ? "bg-[#0061ff] scale-110" : "bg-slate-200"
                         )}>
                           {formData.permissions[key as keyof UserPermissions] && <CheckCircle2 size={12} />}
                         </div>
@@ -1167,7 +1167,7 @@ const Users: React.FC = () => {
                   <Button 
                     type="submit" 
                     disabled={loading}
-                    className="flex-[2] h-12 bg-[#7f54b3] hover:bg-[#6c449c] text-white rounded-xl font-black uppercase text-xs tracking-widest shadow-lg shadow-[#7f54b3]/20 transition-all active:scale-95"
+                    className="flex-[2] h-12 bg-[#0061ff] hover:bg-[#004ecc] text-white rounded-xl font-black uppercase text-xs tracking-widest shadow-lg shadow-[#0061ff]/20 transition-all active:scale-95"
                   >
                     {loading ? (
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>

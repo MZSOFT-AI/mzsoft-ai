@@ -1,26 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 :root {
-  --background: #f1f2f3;
-  --foreground: #1e293b;
-  --primary: #714b67;
-  --secondary: #00a09d;
-  --astra-blue: #714b67;
-  --astra-dark: #212529;
-  --astra-border: #dee2e6;
+  --background: #fcfdfe;
+  --foreground: #090c15;
+  --primary: #0066ff;
+  --primary-hover: #004ecc;
+  --secondary: #00b4d8;
+  --astra-blue: #0066ff;
+  --astra-dark: #090c15;
+  --astra-border: #e2e8f1;
 }
 
 :root.dark, .dark {
-  --background: #090d16;
+  --background: #080a16;
   --foreground: #f1f5f9;
-  --astra-blue: #714b67;
-  --astra-dark: #090d16;
-  --astra-border: #1e293b;
+  --astra-blue: #0066ff;
+  --astra-dark: #080a16;
+  --astra-border: #1e2243;
 }
 
 body {
@@ -31,17 +33,31 @@ body {
 }
 
 @layer components {
+  /* Stripe-inspired Soft Elevation & Refined Borders */
   .mzsoft-card {
-    @apply bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 shadow-xs rounded-xl transition-all duration-200;
+    @apply bg-white dark:bg-[#10132A] border border-slate-200/80 dark:border-[#1E2243] shadow-[0_1px_3px_0_rgba(0,0,0,0.05),0_1px_2px_0_rgba(0,0,0,0.03)] rounded-2xl transition-all duration-300 hover:shadow-[0_4px_12px_rgba(0,102,255,0.05),0_2px_4px_rgba(0,0,0,0.02)];
   }
+  
+  /* Shopify-inspired Crisp Tables */
   .mzsoft-table {
-    @apply w-full text-left text-sm border-collapse;
+    @apply w-full text-left text-xs border-collapse;
   }
   .mzsoft-table th {
-    @apply bg-slate-50 dark:bg-[#1f2937] p-3.5 border border-slate-200/80 dark:border-slate-800 font-extrabold uppercase text-[10px] tracking-wider text-slate-500 dark:text-slate-400;
+    @apply bg-slate-50/75 dark:bg-[#151833]/70 p-4 border-b border-slate-200/80 dark:border-[#1E2243] font-extrabold uppercase text-[10px] tracking-wider text-slate-500 dark:text-[#727C9F] whitespace-nowrap;
   }
   .mzsoft-table td {
-    @apply p-3.5 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] text-slate-700 dark:text-slate-300 font-medium;
+    @apply p-4 border-b border-slate-100 dark:border-[#1E2243] bg-white dark:bg-[#10132A] text-slate-700 dark:text-[DCE2F9] font-medium transition-colors hover:bg-slate-50/50 dark:hover:bg-[#151833]/20;
+  }
+
+  /* Compact premium badge systems */
+  .badge-emerald {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20;
+  }
+  .badge-rose {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200/60 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20;
+  }
+  .badge-amber {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/60 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20;
   }
 }
 
@@ -69,71 +85,103 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #0274be;
+  background: #0061ff;
+}
+
+/* Precise viewport adjustments for PC, tablet and mobile */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* System-wide preventative wrap rules for cells, forms, and labels */
+.mzsoft-table td, 
+.mzsoft-table th {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Input elements styling reset to ensure no line layout break */
+input, select, textarea {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  /* Prevent side margins overflow on small screens */
+  .mzsoft-card {
+    border-radius: 1rem;
+  }
+  /* Responsive inputs */
+  input, select, textarea {
+    font-size: 14px !important; /* Prevents iOS auto-zoom on load input */
+  }
 }
 
 /* Astra ERP Dark Theme System-wide Overrides */
 .dark body {
-  background-color: #0b0f19;
+  background-color: #080a16;
   color: #f1f5f9;
 }
 
 .dark .bg-white {
-  background-color: #111827 !important;
+  background-color: #10132a !important;
 }
 
 .dark .bg-slate-50 {
-  background-color: #0b0f19 !important;
+  background-color: #080a16 !important;
 }
 
 .dark .bg-slate-100 {
-  background-color: #1f2937 !important;
+  background-color: #151833 !important;
 }
 
 .dark .border-slate-200,
 .dark .border-slate-150,
 .dark .border-slate-100 {
-  border-color: #1e293b !important;
+  border-color: #1e2243 !important;
 }
 
 .dark .text-slate-900,
+.dark .text-slate-855,
 .dark .text-slate-800 {
   color: #f1f5f9 !important;
 }
 
 .dark .text-slate-700,
+.dark .text-slate-650,
 .dark .text-slate-600 {
   color: #cbd5e1 !important;
 }
 
-.dark .text-slate-500 {
-  color: #94a3b8 !important;
+.dark .text-slate-500,
+.dark .text-slate-450,
+.dark .text-slate-400 {
+  color: #727c9f !important;
 }
 
 .dark input,
 .dark select,
 .dark textarea {
-  background-color: #0b0f19 !important;
+  background-color: #080a16 !important;
   color: #f1f5f9 !important;
-  border-color: #1e293b !important;
+  border-color: #1e2243 !important;
 }
 
 .dark input::placeholder,
 .dark select::placeholder,
 .dark textarea::placeholder {
-  color: #64748b !important;
+  color: #4b527b !important;
 }
 
 /* Modals and Dialogs overlays */
 .dark .bg-white\/80 {
-  background-color: rgba(17, 24, 39, 0.8) !important;
+  background-color: rgba(16, 19, 42, 0.8) !important;
 }
 
 .dark .bg-white\/90 {
-  background-color: rgba(17, 24, 39, 0.9) !important;
+  background-color: rgba(16, 19, 42, 0.9) !important;
 }
 
 .dark .hover\:bg-slate-50:hover, 
 .dark .hover\:bg-slate-100:hover {
-  background-color: #1e293b !important;
+  background-color: #1b1e37 !important;
 }

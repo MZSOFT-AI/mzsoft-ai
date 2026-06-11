@@ -573,113 +573,109 @@ const Projects: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="block w-full overflow-x-auto bg-white border border-slate-200 shadow-xs rounded-2xl">
             {filteredProjects.length === 0 ? (
-              <div className="col-span-full bg-white border-2 border-dashed border-slate-300 p-16 text-center">
+              <div className="bg-white p-16 text-center">
                 <HardHat size={48} className="mx-auto text-slate-400 mb-4 animate-bounce" />
                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Aucun chantier enregistré dans le système</p>
                 <p className="text-[10px] text-slate-400 mt-1 uppercase">Cliquez sur "Nouveau Chantier" pour en ajouter un</p>
               </div>
             ) : (
-              filteredProjects.map(project => {
-                const stats = getProjectComprehensiveStats(project.id!);
-                const dtStart = project.startDate ? format((project.startDate as any).toDate ? (project.startDate as any).toDate() : new Date(project.startDate as any), 'dd/MM/yyyy') : '-';
-                const dtEnd = project.endDate ? format((project.endDate as any).toDate ? (project.endDate as any).toDate() : new Date(project.endDate as any), 'dd/MM/yyyy') : 'Indéterminé';
+              <table className="mzsoft-table min-w-[1100px] xl:min-w-full">
+                <thead>
+                  <tr>
+                    <th className="min-w-[180px] whitespace-nowrap">Intitulé du Chantier</th>
+                    <th className="min-w-[130px] whitespace-nowrap">Localisation</th>
+                    <th className="min-w-[130px] whitespace-nowrap">Client Associé</th>
+                    <th className="min-w-[100px] whitespace-nowrap">Chef Réf.</th>
+                    <th className="min-w-[130px] whitespace-nowrap">Période d'Exécution</th>
+                    <th className="min-w-[110px] whitespace-nowrap">Budget Initial</th>
+                    <th className="min-w-[105px] text-right whitespace-nowrap">Facturé HT</th>
+                    <th className="min-w-[105px] text-right whitespace-nowrap">Encaissé HT</th>
+                    <th className="min-w-[90px] whitespace-nowrap">Statut</th>
+                    <th className="min-w-[120px] text-right whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProjects.map(project => {
+                    const stats = getProjectComprehensiveStats(project.id!);
+                    const dtStart = project.startDate ? format((project.startDate as any).toDate ? (project.startDate as any).toDate() : new Date(project.startDate as any), 'dd/MM/yyyy') : '-';
+                    const dtEnd = project.endDate ? format((project.endDate as any).toDate ? (project.endDate as any).toDate() : new Date(project.endDate as any), 'dd/MM/yyyy') : 'Indéterminé';
 
-                return (
-                  <div 
-                    key={project.id} 
-                    className="bg-white border-2 border-slate-200 hover:border-blue-500 transition-all duration-300 flex flex-col justify-between shadow-sm relative overflow-hidden"
-                  >
-                    {/* Visual bar indicating status */}
-                    <div className={cn("h-1.5 w-full", 
-                      project.status === 'completed' ? "bg-emerald-500" :
-                      project.status === 'active' ? "bg-blue-500" :
-                      project.status === 'cancelled' ? "bg-rose-500" : "bg-amber-500"
-                    )} />
-                    
-                    <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                      <div>
-                        <div className="flex justify-between items-start gap-2 mb-2">
+                    return (
+                      <tr key={project.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="whitespace-normal">
+                          <div className="flex flex-col">
+                            <span className="font-extrabold text-slate-800 uppercase text-xs">{project.name}</span>
+                            <span className="text-[9px] text-[#0066FF] font-black tracking-wider uppercase mt-0.5 flex items-center gap-1">
+                              {stats.docCount} DOCS {project.description && `• ${project.description}`}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                          <span className="flex items-center gap-1 leading-snug">
+                            <MapPin size={11} className="text-slate-400 shrink-0" />
+                            <span className="truncate max-w-[180px]">{project.location || '-'}</span>
+                          </span>
+                        </td>
+                        <td className="text-xs text-slate-750 font-bold whitespace-nowrap">
+                          <span className="truncate max-w-[150px]">{project.clientName || 'De passage'}</span>
+                        </td>
+                        <td className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                          {project.assignedTo || '-'}
+                        </td>
+                        <td className="text-[10px] font-mono text-slate-500 font-bold whitespace-nowrap">
+                          {dtStart} → {dtEnd}
+                        </td>
+                        <td className="font-extrabold text-[#0066FF] font-mono text-xs whitespace-nowrap">
+                          {project.budget ? `${formatCurrency(Number(project.budget))}` : '-'}
+                        </td>
+                        <td className="text-right font-black text-slate-700 font-mono text-xs whitespace-nowrap">
+                          {formatCurrency(stats.totalFacture)}
+                        </td>
+                        <td className="text-right font-black text-emerald-600 font-mono text-xs whitespace-nowrap">
+                          {formatCurrency(stats.totalEncaisse)}
+                        </td>
+                        <td className="whitespace-nowrap">
                           <span className={cn("px-2 py-0.5 text-[8.5px] font-black uppercase tracking-wider rounded border", getStatusColor(project.status))}>
                             {getStatusLabel(project.status)}
                           </span>
-                          <span className="text-[9px] font-mono text-slate-400 font-bold uppercase">
-                            {stats.docCount} docs
-                          </span>
-                        </div>
-                        
-                        <h3 className="text-base font-black text-slate-900 uppercase tracking-tight leading-snug line-clamp-1">{project.name}</h3>
-                        <p className="text-[10px] text-slate-450 font-bold uppercase tracking-wide flex items-center gap-1 mt-1">
-                          <MapPin size={12} className="text-slate-400 shrink-0" /> <span className="truncate">{project.location || 'Adresse non indiquée'}</span>
-                        </p>
-                      </div>
-
-                      {/* Client Details */}
-                      <div className="bg-slate-50 border border-slate-200/60 p-3 space-y-1 rounded">
-                        <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-slate-600 uppercase">
-                          <User size={12} className="text-slate-400" />
-                          <span className="truncate">Client: <span className="text-slate-900">{project.clientName || 'De passage'}</span></span>
-                        </div>
-                        {project.assignedTo && (
-                          <div className="flex items-center gap-1.5 text-[10.5px] text-blue-600 font-black uppercase tracking-wide">
-                            <HardHat size={11} className="text-blue-500 shrink-0" />
-                            <span className="truncate">Chef: {project.assignedTo}</span>
+                        </td>
+                        <td className="text-right whitespace-nowrap">
+                          <div className="flex gap-1.5 justify-end">
+                            <Button 
+                              onClick={() => {
+                                setActiveTrackingProjectId(project.id!);
+                                setViewMode('tracking');
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[9px] uppercase tracking-wider h-8 px-2.5 rounded-lg flex items-center gap-1 shadow-xs"
+                            >
+                              <Activity size={11} />
+                              Suivi
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              onClick={() => handleEdit(project)} 
+                              className="h-8 w-8 p-0 bg-white border-slate-200 hover:border-slate-300"
+                              title="Modifier"
+                            >
+                              <Edit2 size={11} />
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              onClick={() => handleDelete(project.id!)} 
+                              className="h-8 w-8 p-0 bg-white border-slate-200 text-rose-500 hover:bg-rose-50 hover:border-rose-200"
+                              title="Supprimer"
+                            >
+                              <Trash2 size={11} />
+                            </Button>
                           </div>
-                        )}
-                        <div className="flex items-center gap-1.5 text-[9.5px] font-medium text-slate-500 font-mono mt-1">
-                          <Calendar size={11} className="text-slate-400" />
-                          <span>{dtStart} → {dtEnd}</span>
-                        </div>
-                      </div>
-
-                      {/* Financial statistics preview */}
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                        <div>
-                          <p className="text-[8.5px] font-black text-slate-400 uppercase tracking-wider">Facturé HT</p>
-                          <p className="text-xs font-black text-slate-800">{formatCurrency(stats.totalFacture)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[8.5px] font-black text-slate-400 uppercase tracking-wider">Encaissé HT</p>
-                          <p className="text-xs font-black text-emerald-600">{formatCurrency(stats.totalEncaisse)}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer Actions */}
-                    <div className="border-t border-slate-150 bg-slate-50/50 p-3.5 flex items-center justify-between gap-2.5">
-                      <Button 
-                        onClick={() => {
-                          setActiveTrackingProjectId(project.id!);
-                          setViewMode('tracking');
-                        }}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] uppercase tracking-wider h-9 flex items-center justify-center gap-1.5 shadow"
-                      >
-                        <Activity size={13} />
-                        Suivi Financier
-                      </Button>
-                      
-                      <Button 
-                        variant="outline" 
-                        onClick={() => handleEdit(project)} 
-                        className="h-9 w-9 p-0 bg-white border-slate-200 hover:border-slate-300"
-                        title="Modifier"
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      
-                      <Button 
-                        variant="outline" 
-                        onClick={() => handleDelete(project.id!)} 
-                        className="h-9 w-9 p-0 bg-white border-slate-200 text-rose-500 hover:bg-rose-50 hover:border-rose-200"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={13} />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         </div>

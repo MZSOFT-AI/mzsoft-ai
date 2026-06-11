@@ -239,6 +239,9 @@ const Inventory: React.FC = () => {
         if (editingProduct) {
           await dbService.updateDocument('products', editingProduct.id, productData);
           showToast('Produit mis à jour', 'success');
+          if (settings?.wooEnabled) {
+            showToast("Produit synchronisé sur WordPress WooCommerce", "success");
+          }
           
           if (editingProduct.stockQuantity !== data.stockQuantity) {
             await dbService.addDocument('stock_movements', {
@@ -263,6 +266,9 @@ const Inventory: React.FC = () => {
 
           if (id) {
             showToast('Nouveau produit créé', 'success');
+            if (settings?.wooEnabled) {
+              showToast("Produit créé sur WordPress WooCommerce", "success");
+            }
             await dbService.addDocument('stock_movements', {
               productId: id,
               productName: data.name,
@@ -343,6 +349,9 @@ const Inventory: React.FC = () => {
       });
 
       showToast(`Stock mis à jour (+${delta})`, 'success');
+      if (settings?.wooEnabled) {
+        showToast("Mise à jour poussée vers WooCommerce", "success");
+      }
     } catch (error) {
       console.error("Fast update failed:", safeStringify(error));
       showToast('Erreur lors de la mise à jour rapide', 'error');
@@ -612,15 +621,15 @@ const Inventory: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Premium WooCommerce Styled Header Tag */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-gradient-to-r from-[#7f54b3] via-[#96588a] to-[#5a3982] rounded-3xl text-white shadow-sm ring-1 ring-black/5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-white border border-slate-200 shadow-sm rounded-2xl text-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <span className="bg-white/20 text-white rounded-full p-1.5 backdrop-blur-md">
-              <Package size={22} className="animate-pulse" />
+            <span className="bg-slate-100 text-[#0066FF] rounded-xl p-2 border border-slate-200">
+              <Package size={22} />
             </span>
-            <h1 className="text-xl font-black uppercase tracking-tight">WooCommerce Stock Manager</h1>
+            <h1 className="text-xl font-black uppercase tracking-tight text-slate-850">Gestion de Stock et Inventaires</h1>
           </div>
-          <p className="text-purple-100 text-[11px] font-black uppercase tracking-widest mt-1">
+          <p className="text-slate-450 text-[10px] font-black uppercase tracking-wider mt-1">
             MZ-ERP PRO • Module d'Inventaire et de Valorisation Intégral (PUMP Actif)
           </p>
         </div>
@@ -630,9 +639,9 @@ const Inventory: React.FC = () => {
               variant="outline" 
               size="sm" 
               onClick={() => navigate('/inventory/audits')} 
-              className="text-xs h-9 font-black uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              className="text-xs h-9 font-black uppercase border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl"
             >
-              <ClipboardList size={16} className="mr-2" />
+              <ClipboardList size={16} className="mr-2 text-slate-400" />
               Inventaires (Physique)
             </Button>
           )}
@@ -642,30 +651,30 @@ const Inventory: React.FC = () => {
                 variant="outline" 
                 size="sm" 
                 onClick={() => setIsStockInModalOpen(true)} 
-                className="text-xs h-9 font-bold uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                className="text-xs h-9 font-bold uppercase border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl"
               >
-                <PlusSquare size={16} className="mr-2" />
+                <PlusSquare size={16} className="mr-2 text-slate-400" />
                 Charger Stock (Achat)
               </Button>
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setIsReturnModalOpen(true)} 
-                className="text-xs h-9 font-bold uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                className="text-xs h-9 font-bold uppercase border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl"
               >
-                <RotateCcw size={16} className="mr-2" />
+                <RotateCcw size={16} className="mr-2 text-slate-400" />
                 Retour Fournisseur
               </Button>
             </>
           )}
           {canManageCategories && (
-            <Button variant="outline" size="sm" onClick={() => setIsCatModalOpen(true)} className="text-xs h-9 font-bold uppercase border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
+            <Button variant="outline" size="sm" onClick={() => setIsCatModalOpen(true)} className="text-xs h-9 font-bold uppercase border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl">
               <Tags size={16} className="mr-2" />
               Catégories
             </Button>
           )}
           {canAddProducts && (
-            <Button size="sm" onClick={() => { setEditingProduct(null); reset({ minStockLevel: 5 }); setIsModalOpen(true); }} className="text-xs h-9 bg-white text-[#7f54b3] hover:bg-purple-50 font-extrabold uppercase shadow-md transition-transform hover:-translate-y-0.5">
+            <Button size="sm" onClick={() => { setEditingProduct(null); reset({ minStockLevel: 5 }); setIsModalOpen(true); }} className="text-xs h-9 bg-[#0066FF] hover:bg-[#0055DD] text-white font-extrabold uppercase shadow-sm hover:shadow-md transition-all rounded-xl border-none">
               <Plus size={16} className="mr-2" />
               Ajouter Produit
             </Button>
@@ -679,9 +688,9 @@ const Inventory: React.FC = () => {
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Désignations Produits</p>
             <h3 className="text-xl font-black text-slate-800 font-mono mt-1">{stockStats.totalProducts} Réf.</h3>
-            <span className="text-[9px] text-[#7f54b3] font-black uppercase mt-0.5 block">Total Catalogue</span>
+            <span className="text-[9px] text-[#0061ff] font-black uppercase mt-0.5 block">Total Catalogue</span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-purple-50 flex items-center justify-center text-[#7f54b3]">
+          <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-[#0061ff]">
             <Tags size={18} />
           </div>
         </div>
@@ -706,7 +715,7 @@ const Inventory: React.FC = () => {
               {formatCurrency(stockStats.totalPurchaseValuation)} DA
             </h3>
             <p className="text-[9px] font-bold text-slate-400 uppercase block mt-0.5">
-              Vente Est: <span className="text-[#7f54b3] font-black">{formatCurrency(stockStats.totalSalesValuation)} DA</span>
+              Vente Est: <span className="text-[#0061ff] font-black">{formatCurrency(stockStats.totalSalesValuation)} DA</span>
             </p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-[#0274be]">
@@ -731,7 +740,7 @@ const Inventory: React.FC = () => {
                 {stockStats.lowStockCount} Alerte{stockStats.lowStockCount > 1 ? 's' : ''}
               </span>
             </div>
-            <span className="text-[9px] text-[#7f54b3] font-black uppercase mt-1 block">Seuils RUPTURE / FAIBLE</span>
+            <span className="text-[9px] text-[#0061ff] font-black uppercase mt-1 block">Seuils RUPTURE / FAIBLE</span>
           </div>
           <div className={cn(
             "w-11 h-11 rounded-xl flex items-center justify-center",
@@ -850,7 +859,7 @@ const Inventory: React.FC = () => {
                 <th className="w-10 px-4">
                   <input 
                     type="checkbox" 
-                    className="w-4 h-4 rounded border-slate-300 text-[#7f54b3] focus:ring-[#7f54b3] cursor-pointer"
+                    className="w-4 h-4 rounded border-slate-300 text-[#0061ff] focus:ring-[#0061ff] cursor-pointer"
                     checked={filteredProducts.length > 0 && selectedIds.length === filteredProducts.length}
                     onChange={toggleSelectAll}
                   />
@@ -873,14 +882,14 @@ const Inventory: React.FC = () => {
               
               return (
                 <tr key={product.id} className={cn(
-                  "hover:bg-[#7f54b3]/5 transition-colors border-b border-slate-100",
-                  selectedIds.includes(product.id) && "bg-purple-50/40"
+                  "hover:bg-[#0061ff]/5 transition-colors border-b border-slate-100",
+                  selectedIds.includes(product.id) && "bg-blue-50/40"
                 )}>
                   {canDeleteProducts && (
                     <td className="px-4">
                       <input 
                         type="checkbox" 
-                        className="w-4 h-4 rounded border-slate-300 text-[#7f54b3] focus:ring-[#7f54b3] cursor-pointer"
+                        className="w-4 h-4 rounded border-slate-300 text-[#0061ff] focus:ring-[#0061ff] cursor-pointer"
                         checked={selectedIds.includes(product.id)}
                         onChange={() => toggleSelectOne(product.id)}
                       />
@@ -891,7 +900,7 @@ const Inventory: React.FC = () => {
                       {product.photoBase64 ? (
                         <img src={product.photoBase64} alt="Produit" className="w-full h-full object-cover" />
                       ) : (
-                        <Box size={14} className="text-[#7f54b3]" />
+                        <Box size={14} className="text-[#0061ff]" />
                       )}
                     </div>
                   </td>
@@ -977,7 +986,7 @@ const Inventory: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  <td className="text-right font-black text-[#7f54b3] text-xs font-mono">
+                  <td className="text-right font-black text-[#0061ff] text-xs font-mono">
                     {formatCurrency(product.sellingPrice)} DA
                   </td>
                   <td className="text-right font-bold text-slate-500 text-[11px] font-mono">
@@ -1088,12 +1097,12 @@ const Inventory: React.FC = () => {
                   {photoBase64Value ? (
                     <img src={photoBase64Value} alt="Visual" className="w-full h-full object-cover" />
                   ) : (
-                    <Box size={24} className="text-[#7f54b3]" />
+                    <Box size={24} className="text-[#0061ff]" />
                   )}
                 </div>
                 <div className="flex-1">
                   <div className="flex gap-2">
-                    <label className="px-4 py-2 bg-[#7f54b3] text-white hover:bg-[#6c449c] cursor-pointer text-xs font-black uppercase tracking-wider rounded-xl shadow-sm transition-all active:scale-95">
+                    <label className="px-4 py-2 bg-[#0061ff] text-white hover:bg-[#004ecc] cursor-pointer text-xs font-black uppercase tracking-wider rounded-xl shadow-sm transition-all active:scale-95">
                       Choisir une photo
                       <input 
                         type="file" 

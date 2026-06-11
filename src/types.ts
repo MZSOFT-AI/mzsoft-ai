@@ -318,6 +318,13 @@ export interface CompanySettings extends BaseEntity {
   notificationSound?: boolean;
   desktopNotifications?: boolean;
   customCompanyInfo?: string;
+  wooEnabled?: boolean;
+  wooUrl?: string;
+  wooConsumerKey?: string;
+  wooConsumerSecret?: string;
+  wooSyncOnSale?: boolean;
+  wooSyncOnStockIn?: boolean;
+  wooIgnoreNoSku?: boolean;
 }
 
 export interface DailyClosing extends BaseEntity {

@@ -134,7 +134,7 @@ const Employees: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'roster' | 'attendance' | 'leaves' | 'payroll' | 'documents' | 'audit'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'roster' | 'attendance' | 'leaves' | 'payroll' | 'documents' | 'audit'>('roster');
   
   // Filters & searches
   const [searchTerm, setSearchTerm] = useState('');
@@ -1188,8 +1188,8 @@ const Employees: React.FC = () => {
       {/* Unified Tab Nav bar */}
       <div className="flex overflow-x-auto gap-1 border-b border-slate-200 pb-px scrollbar-none">
         {[
-          { id: 'dashboard', label: 'Dashboard', icon: Activity, show: !isEmployeeOnly },
           { id: 'roster', label: isEmployeeOnly ? 'Mon Profil' : 'Effectif & Profils', icon: Users2, show: true },
+          { id: 'dashboard', label: 'Dashboard', icon: Activity, show: !isEmployeeOnly },
           { id: 'attendance', label: 'Présences & Heures', icon: Clock, show: true },
           { id: 'leaves', label: 'Demandes de Congés', icon: Calendar, show: true },
           { id: 'payroll', label: 'Salaires & Bulletins', icon: DollarSign, show: isComptable || isEmployeeOnly },

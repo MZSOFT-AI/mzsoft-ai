@@ -101,20 +101,20 @@ const Layout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0b0f19] flex font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-[#FDFDFE] dark:bg-[#080a16] flex font-sans transition-colors duration-200">
       {/* Mobile Top Navbar */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-100 flex items-center justify-between px-4 z-40 border-b border-slate-200 dark:border-slate-800/80 shadow-xs">
+      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-[#10132A] text-slate-800 dark:text-slate-100 flex items-center justify-between px-4 z-40 border-b border-slate-200 dark:border-[#1E2243] shadow-xs">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsSidebarOpen(true)}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-slate-600 dark:text-slate-300"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-[#151833]/50 rounded-xl transition-colors text-slate-600 dark:text-slate-300 pointer-events-auto"
             aria-label="Open sidebar"
           >
             <Menu size={24} />
           </button>
           
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#0274be] rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+            <div className="w-8 h-8 bg-[#0066ff] rounded-lg flex items-center justify-center overflow-hidden shrink-0">
               {settings.logo ? (
                 <img src={settings.logo} alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
               ) : (
@@ -169,19 +169,18 @@ const Layout: React.FC = () => {
             <span>Mode Hors-Ligne Actif — Vos actions sont en mémoire et seront synchronisées automatiquement avec Firebase dès le retour d'Internet</span>
           </div>
         )}
-        
         {/* Desktop Sticky Header */}
-        <header className="hidden lg:flex sticky top-0 z-35 bg-white/80 dark:bg-[#111827]/85 backdrop-blur-md h-16 border-b border-slate-200 dark:border-slate-800/80 items-center justify-between px-8 shadow-xs">
+        <header className="hidden lg:flex sticky top-0 z-35 bg-white/80 dark:bg-[#10132A]/85 backdrop-blur-md h-16 border-b border-slate-200 dark:border-[#1E2243] items-center justify-between px-8 shadow-xs">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="text-[#0274be] w-5 h-5 shrink-0" />
+            <ShieldCheck className="text-[#0066ff] w-5 h-5 shrink-0" />
             <h1 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-100">
               {getPageTitle(location.pathname)}
             </h1>
           </div>
           
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-slate-400">
-              <Calendar size={13} className="text-[#0274be]" />
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-[#727C9F]">
+              <Calendar size={13} className="text-[#0066ff]" />
               <span>{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
             </div>
 
@@ -197,7 +196,7 @@ const Layout: React.FC = () => {
             {/* Notification Bell */}
             <button 
               onClick={() => setIsPanelOpen(true)}
-              className="p-2 relative bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-all hover:scale-105"
+              className="p-2 relative bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-705 text-slate-600 dark:text-slate-300 rounded-xl transition-all hover:scale-105"
             >
               <Bell size={18} />
               {unreadCount > 0 && (
@@ -208,15 +207,15 @@ const Layout: React.FC = () => {
             </button>
 
             {/* Quick Profile Summary */}
-            <div className="flex items-center gap-2.5 pl-4 border-l border-slate-200 dark:border-slate-800">
-              <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[#0274be]">
+            <div className="flex items-center gap-2.5 pl-4 border-l border-slate-200 dark:border-[#1E2243]">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-[#0066ff]/10 flex items-center justify-center text-[#0066ff]">
                 <User size={15} />
               </div>
               <div className="text-left">
                 <span className="block text-xs font-black text-slate-800 dark:text-slate-100 leading-tight">
                   {userData?.displayName || user?.displayName || 'Admin'}
                 </span>
-                <span className="block text-[8px] font-bold uppercase tracking-widest text-slate-400 leading-none mt-0.5">
+                <span className="block text-[8px] font-bold uppercase tracking-widest text-[#727C9F] leading-none mt-0.5">
                   {userData?.role || 'Admin'}
                 </span>
               </div>
